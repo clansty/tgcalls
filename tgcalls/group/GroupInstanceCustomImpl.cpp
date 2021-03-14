@@ -509,10 +509,10 @@ public:
 
         _audioChannel = _channelManager->CreateVoiceChannel(call, cricket::MediaConfig(), rtpTransport, threads.getMediaThread(), std::string("audio") + uint32ToString(ssrc.networkSsrc), false, GroupNetworkManager::getDefaulCryptoOptions(), randomIdGenerator, audioOptions);
 
-        const uint8_t opusMinBitrateKbps = 32;
-        const uint8_t opusMaxBitrateKbps = 32;
-        const uint8_t opusStartBitrateKbps = 32;
-        const uint8_t opusPTimeMs = 120;
+        const uint16_t opusMinBitrateKbps = 32;
+        const uint16_t opusMaxBitrateKbps = 510;
+        const uint16_t opusStartBitrateKbps = 32;
+        const uint8_t opusPTimeMs = 10;
         
         cricket::AudioCodec opusCodec(111, "opus", 48000, 0, 2);
         opusCodec.SetParam(cricket::kCodecParamMinBitrate, opusMinBitrateKbps);
@@ -795,8 +795,9 @@ public:
     _videoCapture(descriptor.videoCapture),
     _eventLog(std::make_unique<webrtc::RtcEventLogNull>()),
     _taskQueueFactory(webrtc::CreateDefaultTaskQueueFactory()),
-	_createAudioDeviceModule(descriptor.createAudioDeviceModule),
-    _missingPacketBuffer(100) {
+    _createAudioDeviceModule(descriptor.createAudioDeviceModule),
+    _missingPacketBuffer(100),
+    _radioMode(descriptor.enableRadioMode) {
         assert(_threads->getMediaThread()->IsCurrent());
 
         auto generator = std::mt19937(std::random_device()());
@@ -836,7 +837,7 @@ public:
         const auto weak = std::weak_ptr<GroupInstanceCustomInternal>(shared_from_this());
 
         webrtc::field_trial::InitFieldTrialsFromString(
-            "WebRTC-Audio-Allocation/min:32kbps,max:32kbps/"
+            "WebRTC-Audio-Allocation/min:32kbps,max:510kbps/"
             "WebRTC-Audio-OpusMinPacketLossRate/Enabled-1/"
         );
 
@@ -976,18 +977,39 @@ public:
         audioOptions.noise_suppression = true;
         audioOptions.audio_jitter_buffer_fast_accelerate = true;
 
+        if (_radioMode) {
+            audioOptions.echo_cancellation = false;
+            audioOptions.auto_gain_control = false;
+            audioOptions.noise_suppression = false;
+            audioOptions.highpass_filter = false;
+            audioOptions.stereo_swapping = false;
+            audioOptions.typing_detection = false;
+            audioOptions.experimental_agc = false;
+            audioOptions.experimental_ns = false;
+            audioOptions.residual_echo_detector = false;
+            audioOptions.tx_agc_limiter = false;
+        }
+
         std::vector<std::string> streamIds;
         streamIds.push_back("1");
         
         _outgoingAudioChannel = _channelManager->CreateVoiceChannel(_call.get(), cricket::MediaConfig(), _rtpTransport, _threads->getMediaThread(), "0", false, GroupNetworkManager::getDefaulCryptoOptions(), _uniqueRandomIdGenerator.get(), audioOptions);
 
-        const uint8_t opusMinBitrateKbps = 32;
-        const uint8_t opusMaxBitrateKbps = 32;
-        const uint8_t opusStartBitrateKbps = 32;
-        const uint8_t opusPTimeMs = 120;
+        uint16_t opusMinBitrateKbps = 32;
+        uint16_t opusMaxBitrateKbps = 32;
+        uint16_t opusStartBitrateKbps = 32;
+        uint8_t opusPTimeMs = 120;
 
         cricket::AudioCodec opusCodec(111, "opus", 48000, 0, 2);
         opusCodec.AddFeedbackParam(cricket::FeedbackParam(cricket::kRtcpFbParamTransportCc));
+        if (_radioMode) {
+            opusMinBitrateKbps = 320;
+            opusMaxBitrateKbps = 510;
+            opusStartBitrateKbps = 320;
+            opusPTimeMs = 10;
+            opusCodec.SetParam(cricket::kCodecParamMaxAverageBitrate, 510000);
+            opusCodec.SetParam(cricket::kCodecParamStereo, 1);
+        }
         opusCodec.SetParam(cricket::kCodecParamMinBitrate, opusMinBitrateKbps);
         opusCodec.SetParam(cricket::kCodecParamStartBitrate, opusStartBitrateKbps);
         opusCodec.SetParam(cricket::kCodecParamMaxBitrate, opusMaxBitrateKbps);
@@ -1019,7 +1041,7 @@ public:
 
         _outgoingAudioChannel->SignalSentPacket().connect(this, &GroupInstanceCustomInternal::OnSentPacket_w);
         _outgoingAudioChannel->UpdateRtpTransport(nullptr);
-        
+
         onUpdatedIsMuted();
     }
 
@@ -2112,20 +2134,20 @@ public:
 
 private:
     rtc::scoped_refptr<webrtc::AudioDeviceModule> createAudioDeviceModule() {
-		const auto create = [&](webrtc::AudioDeviceModule::AudioLayer layer) {
-			return webrtc::AudioDeviceModule::Create(
-				layer,
-				_taskQueueFactory.get());
-		};
-		const auto check = [&](const rtc::scoped_refptr<webrtc::AudioDeviceModule> &result) {
-			return (result && result->Init() == 0) ? result : nullptr;
-		};
-		if (_createAudioDeviceModule) {
-			if (const auto result = check(_createAudioDeviceModule(_taskQueueFactory.get()))) {
-				return result;
-			}
-		}
-		return check(create(webrtc::AudioDeviceModule::kPlatformDefaultAudio));
+        const auto create = [&](webrtc::AudioDeviceModule::AudioLayer layer) {
+            return webrtc::AudioDeviceModule::Create(
+                layer,
+                _taskQueueFactory.get());
+        };
+        const auto check = [&](const rtc::scoped_refptr<webrtc::AudioDeviceModule> &result) {
+            return (result && result->Init() == 0) ? result : nullptr;
+        };
+        if (_createAudioDeviceModule) {
+            if (const auto result = check(_createAudioDeviceModule(_taskQueueFactory.get()))) {
+                return result;
+            }
+        }
+        return check(create(webrtc::AudioDeviceModule::kPlatformDefaultAudio));
     }
 
 private:
@@ -2155,7 +2177,7 @@ private:
     webrtc::FieldTrialBasedConfig _fieldTrials;
     webrtc::LocalAudioSinkAdapter _audioSource;
     rtc::scoped_refptr<webrtc::AudioDeviceModule> _audioDeviceModule;
-	std::function<rtc::scoped_refptr<webrtc::AudioDeviceModule>(webrtc::TaskQueueFactory*)> _createAudioDeviceModule;
+    std::function<rtc::scoped_refptr<webrtc::AudioDeviceModule>(webrtc::TaskQueueFactory*)> _createAudioDeviceModule;
 
     // _outgoingAudioChannel memory is managed by _channelManager
     cricket::VoiceChannel *_outgoingAudioChannel = nullptr;
@@ -2202,6 +2224,8 @@ private:
     absl::optional<int64_t> _broadcastEnabledUntilRtcIsConnectedAtTimestamp;
     bool _isDataChannelOpen = false;
     GroupNetworkState _effectiveNetworkState;
+
+    bool _radioMode = false;
 };
 
 GroupInstanceCustomImpl::GroupInstanceCustomImpl(GroupInstanceDescriptor &&descriptor) {
