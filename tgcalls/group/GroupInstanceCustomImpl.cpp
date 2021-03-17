@@ -1650,22 +1650,24 @@ public:
 
             _pendingUnknownSsrcs.insert(ssrc);
 
-            auto timestamp = rtc::TimeMillis();
-            if (_lastUnknownSsrcsReport < timestamp - 100) {
-                doReportPendingUnknownSsrcs();
-            } else if (!_isUnknownSsrcsScheduled) {
-                _isUnknownSsrcsScheduled = true;
+            if (!_isUnknownSsrcsScheduled) {
+                auto timestamp = rtc::TimeMillis();
+                if (_lastUnknownSsrcsReport < timestamp - 100) {
+                    doReportPendingUnknownSsrcs();
+                } else {
+                    _isUnknownSsrcsScheduled = true;
 
-                const auto weak = std::weak_ptr<GroupInstanceCustomInternal>(shared_from_this());
-                _threads->getMediaThread()->PostDelayedTask(RTC_FROM_HERE, [weak]() {
-                    auto strong = weak.lock();
-                    if (!strong) {
-                        return;
-                    }
+                    const auto weak = std::weak_ptr<GroupInstanceCustomInternal>(shared_from_this());
+                    _threads->getMediaThread()->PostDelayedTask(RTC_FROM_HERE, [weak]() {
+                        auto strong = weak.lock();
+                        if (!strong) {
+                            return;
+                        }
 
-                    strong->_isUnknownSsrcsScheduled = false;
-                    strong->doReportPendingUnknownSsrcs();
-                }, 100);
+                        strong->_isUnknownSsrcsScheduled = false;
+                        strong->doReportPendingUnknownSsrcs();
+                    }, 100);
+                }
             }
         }
     }
@@ -1940,6 +1942,8 @@ public:
                 continue;
             }
 
+            _reportedUnknownSsrcs.erase(participant.audioSsrc);
+
             if (_incomingAudioChannels.find(ChannelId(participant.audioSsrc)) == _incomingAudioChannels.end()) {
                 addIncomingAudioChannel(participant.endpointId, ChannelId(participant.audioSsrc));
             }
@@ -2025,6 +2029,14 @@ public:
                 const auto it = _incomingAudioChannels.find(minActivityChannelId);
                 if (it != _incomingAudioChannels.end()) {
                     _incomingAudioChannels.erase(it);
+                }
+                auto reportedIt = _reportedUnknownSsrcs.find(minActivityChannelId.actualSsrc);
+                if (reportedIt != _reportedUnknownSsrcs.end()) {
+                    _reportedUnknownSsrcs.erase(reportedIt);
+                }
+                auto mappingIt = _ssrcMapping.find(minActivityChannelId.actualSsrc);
+                if (mappingIt != _ssrcMapping.end()) {
+                    _ssrcMapping.erase(mappingIt);
                 }
             }
         }
@@ -2354,6 +2366,36 @@ void GroupInstanceCustomImpl::setFullSizeVideoSsrc(uint32_t ssrc) {
     _internal->perform(RTC_FROM_HERE, [ssrc](GroupInstanceCustomInternal *internal) {
         internal->setFullSizeVideoSsrc(ssrc);
     });
+}
+std::vector<GroupInstanceInterface::AudioDevice> GroupInstanceInterface::getAudioDevices(AudioDevice::Type type) {
+  auto result = std::vector<AudioDevice>();
+#ifdef WEBRTC_LINUX //Not needed for ios, and some crl::sync stuff is needed for windows
+  const auto resolve = [&] {
+    const auto queueFactory = webrtc::CreateDefaultTaskQueueFactory();
+    const auto info = webrtc::AudioDeviceModule::Create(
+        webrtc::AudioDeviceModule::kPlatformDefaultAudio,
+        queueFactory.get());
+    if (!info || info->Init() < 0) {
+      return;
+    }
+    const auto count = type == AudioDevice::Type::Input ? info->RecordingDevices() : info->PlayoutDevices();
+    if (count <= 0) {
+      return;
+    }
+    for (auto i = int16_t(); i != count; ++i) {
+      char name[webrtc::kAdmMaxDeviceNameSize + 1] = { 0 };
+      char id[webrtc::kAdmMaxGuidSize + 1] = { 0 };
+      if (type == AudioDevice::Type::Input) {
+        info->RecordingDeviceName(i, name, id);
+      } else {
+        info->PlayoutDeviceName(i, name, id);
+      }
+      result.push_back({ id, name });
+    }
+  };
+  resolve();
+#endif
+  return result;
 }
 
 } // namespace tgcalls
