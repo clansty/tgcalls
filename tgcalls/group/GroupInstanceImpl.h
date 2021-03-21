@@ -92,6 +92,7 @@ struct GroupInstanceDescriptor {
     std::function<void(std::vector<uint32_t> const &)> participantDescriptionsRequired;
     std::function<std::shared_ptr<BroadcastPartTask>(int64_t, int64_t, std::function<void(BroadcastPart &&)>)> requestBroadcastPart;
     bool enableRadioMode = false;
+    uint16_t customBitrate = 32;
 };
 
 struct GroupJoinPayloadFingerprint {

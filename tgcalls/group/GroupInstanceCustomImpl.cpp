@@ -800,7 +800,8 @@ public:
     _initialInputDeviceId(std::move(descriptor.initialInputDeviceId)),
     _initialOutputDeviceId(std::move(descriptor.initialOutputDeviceId)),
     _missingPacketBuffer(100),
-    _radioMode(descriptor.enableRadioMode) {
+    _radioMode(descriptor.enableRadioMode),
+    _customBitrate(descriptor.customBitrate) {
         assert(_threads->getMediaThread()->IsCurrent());
 
         auto generator = std::mt19937(std::random_device()());
@@ -834,7 +835,7 @@ public:
         }
 
         _channelManager = nullptr;
-		_audioDeviceModule = nullptr;
+        _audioDeviceModule = nullptr;
     }
 
     void start() {
@@ -1003,16 +1004,17 @@ public:
         _outgoingAudioChannel = _channelManager->CreateVoiceChannel(_call.get(), cricket::MediaConfig(), _rtpTransport, _threads->getMediaThread(), "0", false, GroupNetworkManager::getDefaulCryptoOptions(), _uniqueRandomIdGenerator.get(), audioOptions);
 
         uint16_t opusMinBitrateKbps = 32;
-        uint16_t opusMaxBitrateKbps = 32;
+        uint16_t opusMaxBitrateKbps = 510;
         uint16_t opusStartBitrateKbps = 32;
         uint8_t opusPTimeMs = 120;
 
         cricket::AudioCodec opusCodec(111, "opus", 48000, 0, 2);
         opusCodec.AddFeedbackParam(cricket::FeedbackParam(cricket::kRtcpFbParamTransportCc));
+        if (_customBitrate) {
+            opusMinBitrateKbps = _customBitrate;
+            opusStartBitrateKbps = _customBitrate;
+        }
         if (_radioMode) {
-            opusMinBitrateKbps = 320;
-            opusMaxBitrateKbps = 510;
-            opusStartBitrateKbps = 320;
             opusPTimeMs = 10;
             opusCodec.SetParam(cricket::kCodecParamMaxAverageBitrate, 510000);
             opusCodec.SetParam(cricket::kCodecParamStereo, 1);
@@ -1882,7 +1884,7 @@ public:
         }
     }
 
-	void setAudioOutputDevice(const std::string &id) {
+    void setAudioOutputDevice(const std::string &id) {
 #ifndef WEBRTC_IOS
         SetAudioOutputDeviceById(_audioDeviceModule.get(), id);
 #endif // WEBRTC_IOS
@@ -2259,6 +2261,7 @@ private:
     GroupNetworkState _effectiveNetworkState;
 
     bool _radioMode = false;
+    uint16_t _customBitrate = 32;
 };
 
 GroupInstanceCustomImpl::GroupInstanceCustomImpl(GroupInstanceDescriptor &&descriptor) {
@@ -2341,13 +2344,13 @@ void GroupInstanceCustomImpl::setVideoCapture(std::shared_ptr<VideoCaptureInterf
 void GroupInstanceCustomImpl::setAudioOutputDevice(std::string id) {
     _internal->perform(RTC_FROM_HERE, [id](GroupInstanceCustomInternal *internal) {
         internal->setAudioOutputDevice(id);
-	});
+    });
 }
 
 void GroupInstanceCustomImpl::setAudioInputDevice(std::string id) {
-	_internal->perform(RTC_FROM_HERE, [id](GroupInstanceCustomInternal *internal) {
-		internal->setAudioInputDevice(id);
-	});
+    _internal->perform(RTC_FROM_HERE, [id](GroupInstanceCustomInternal *internal) {
+        internal->setAudioInputDevice(id);
+    });
 }
 
 void GroupInstanceCustomImpl::addIncomingVideoOutput(uint32_t ssrc, std::weak_ptr<rtc::VideoSinkInterface<webrtc::VideoFrame>> sink) {
