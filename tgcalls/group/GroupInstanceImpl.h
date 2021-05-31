@@ -83,8 +83,6 @@ enum class VideoContentType {
     None,
     Screencast,
     Generic
-    bool enableRadioMode = false;
-    uint16_t customBitrate = 32;
 };
 
 enum class VideoCodecName {
