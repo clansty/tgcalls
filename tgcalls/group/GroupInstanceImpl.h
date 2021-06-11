@@ -37,6 +37,7 @@ struct GroupConfig {
 struct GroupLevelValue {
     float level = 0.;
     bool voice = false;
+    bool isMuted = false;
 };
 
 struct GroupLevelUpdate {
@@ -122,7 +123,8 @@ struct VideoChannelDescription {
     uint32_t audioSsrc = 0;
     std::string endpointId;
     std::vector<MediaSsrcGroup> ssrcGroups;
-    Quality quality = Quality::Thumbnail;
+    Quality minQuality = Quality::Thumbnail;
+    Quality maxQuality = Quality::Thumbnail;
 };
 
 struct GroupInstanceDescriptor {

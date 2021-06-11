@@ -76,6 +76,14 @@
 
 @implementation VideoCapturerInterfaceImplReference
 
+- (id)videoCameraCapturer {
+#ifdef WEBRTC_IOS
+    return _videoCameraCapturer;
+#else
+    return _videoCapturer;
+#endif
+}
+
 + (AVCaptureDevice *)selectCapturerDeviceWithDeviceId:(NSString *)deviceId {
     AVCaptureDevice *selectedCamera = nil;
 
@@ -255,6 +263,15 @@
 #endif
 }
 
+-(void)setOnPause:(std::function<void(bool)>)pause {
+#ifdef WEBRTC_IOS
+#else
+    if (_videoCapturer) {
+        [_videoCapturer setOnPause:pause];
+    } 
+#endif
+}
+
 - (void)setIsEnabled:(bool)isEnabled {
 #ifdef WEBRTC_IOS
     if (_videoCameraCapturer) {
@@ -386,6 +403,16 @@ void VideoCapturerInterfaceImpl::setPreferredCaptureAspectRatio(float aspectRati
     });
 }
 
+void VideoCapturerInterfaceImpl::withNativeImplementation(std::function<void(void *)> completion) {
+    VideoCapturerInterfaceImplHolder *implReference = _implReference;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (implReference.reference != nil) {
+            VideoCapturerInterfaceImplReference *reference = (__bridge VideoCapturerInterfaceImplReference *)implReference.reference;
+            completion((__bridge void *)[reference videoCameraCapturer]);
+        }
+    });
+}
+
 void VideoCapturerInterfaceImpl::setUncroppedOutput(std::shared_ptr<rtc::VideoSinkInterface<webrtc::VideoFrame>> sink) {
     VideoCapturerInterfaceImplHolder *implReference = _implReference;
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -402,6 +429,16 @@ void VideoCapturerInterfaceImpl::setOnFatalError(std::function<void()> error) {
         if (implReference.reference != nil) {
             VideoCapturerInterfaceImplReference *reference = (__bridge VideoCapturerInterfaceImplReference *)implReference.reference;
             [reference setOnFatalError:error];
+        }
+    });
+}
+
+void VideoCapturerInterfaceImpl::setOnPause(std::function<void(bool)> pause) {
+    VideoCapturerInterfaceImplHolder *implReference = _implReference;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (implReference.reference != nil) {
+            VideoCapturerInterfaceImplReference *reference = (__bridge VideoCapturerInterfaceImplReference *)implReference.reference;
+            [reference setOnPause: pause];
         }
     });
 }
