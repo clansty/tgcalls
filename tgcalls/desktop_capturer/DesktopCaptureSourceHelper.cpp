@@ -36,7 +36,7 @@ namespace {
 int GlobalCount = 0;
 
 DesktopSize AspectFitted(DesktopSize from, DesktopSize to) {
-    double scale = std::max(
+    double scale = std::min(
         from.width / std::max(1., double(to.width)),
         from.height / std::max(1., double(to.height)));
     return {
@@ -169,9 +169,9 @@ void SourceFrameCallbackImpl::OnCaptureResult(
     DesktopSize fittedSize = AspectFitted(
         size_,
         { frameSize.width(), frameSize.height() });
-    fittedSize.width &= ~1;
-    fittedSize.height &= ~1;
 
+    fittedSize.width -= (fittedSize.width % 4);
+    fittedSize.height -= (fittedSize.height % 4);
 
     const auto outputSize = webrtc::DesktopSize{
         fittedSize.width,

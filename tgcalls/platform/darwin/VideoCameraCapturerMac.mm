@@ -9,8 +9,8 @@
 #import "sdk/objc/native/src/objc_video_track_source.h"
 #import "sdk/objc/native/src/objc_frame_buffer.h"
 #import "api/video_track_source_proxy.h"
-
-
+#import <CoreMediaIO/CMIOHardware.h>
+#import "TGCMIODevice.h"
 #import "helpers/AVCaptureSession+DevicePosition.h"
 #import "helpers/RTCDispatcher+Private.h"
 #import "base/RTCVideoFrame.h"
@@ -163,6 +163,8 @@ static tgcalls::DarwinVideoTrackSource *getObjCVideoSource(const rtc::scoped_ref
     BOOL _hasRetriedOnFatalError;
     BOOL _hadFatalError;
     BOOL _isRunning;
+    
+    BOOL _shouldBeMirrored;
 
     // Live on RTCDispatcherTypeCaptureSession and main thread.
     std::atomic<bool> _willBeRunning;
@@ -228,11 +230,13 @@ static tgcalls::DarwinVideoTrackSource *getObjCVideoSource(const rtc::scoped_ref
 + (NSArray<AVCaptureDevice *> *)captureDevices {
     AVCaptureDevice * defaultDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
     NSMutableArray<AVCaptureDevice *> * devices = [[AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo] mutableCopy];
+    
+    [devices addObjectsFromArray:[AVCaptureDevice devicesWithMediaType:AVMediaTypeMuxed]];
 
     if ([devices count] > 0) {
         [devices insertObject:defaultDevice atIndex:0];
     }
-
+        
     return devices;
 }
 
@@ -333,14 +337,37 @@ static tgcalls::DarwinVideoTrackSource *getObjCVideoSource(const rtc::scoped_ref
                            fps:(NSInteger)fps
              completionHandler:(nullable void (^)(NSError *))completionHandler {
 
+    
+    CMIOObjectPropertyAddress latency_pa = {
+        kCMIODevicePropertyLatency,
+        kCMIOObjectPropertyScopeWildcard,
+        kCMIOObjectPropertyElementWildcard
+    };
+    UInt32 dataSize = 0;
+    
+    NSNumber *_connectionID = ((NSNumber *)[device valueForKey:@"_connectionID"]);
+    
+    CMIODeviceID deviceId = (CMIODeviceID)[_connectionID intValue];
+    
+    if (device) {
+        if (CMIOObjectGetPropertyDataSize(deviceId, &latency_pa, 0, nil, &dataSize) == noErr) {
+            _shouldBeMirrored = NO;
+        } else {
+            _shouldBeMirrored = YES;
+        }
+    } else {
+        _shouldBeMirrored = [device hasMediaType:AVMediaTypeVideo];
+    }
 //  [RTCDispatcher
 //      dispatchAsyncOnType:RTCDispatcherTypeCaptureSession
 //   block:^{
       RTCLogInfo("startCaptureWithDevice %@ @ %ld fps", format, (long)fps);
+    NSError *error = nil;
 
       self->_currentDevice = device;
-      self->_currentInput = [[AVCaptureDeviceInput alloc] initWithDevice:device error:nil];
-      NSError *error = nil;
+    
+    
+      self->_currentInput = [[AVCaptureDeviceInput alloc] initWithDevice:device error:&error];
       if (![self->_currentDevice lockForConfiguration:&error]) {
           RTCLogError(@"Failed to lock device %@. Error: %@",
                       self->_currentDevice,
@@ -417,7 +444,7 @@ static tgcalls::DarwinVideoTrackSource *getObjCVideoSource(const rtc::scoped_ref
     }
 
     TGRTCCVPixelBuffer *rtcPixelBuffer = [[TGRTCCVPixelBuffer alloc] initWithPixelBuffer:pixelBuffer];
-    rtcPixelBuffer.shouldBeMirrored = true;
+    rtcPixelBuffer.shouldBeMirrored = _shouldBeMirrored;
     if (_aspectRatio > 0.001) {
 		const auto originalWidth = rtcPixelBuffer.width;
 		const auto originalHeight = rtcPixelBuffer.height;
@@ -629,7 +656,7 @@ static tgcalls::DarwinVideoTrackSource *getObjCVideoSource(const rtc::scoped_ref
     _preferredOutputPixelFormat = [pixelFormat unsignedIntValue];
     _outputPixelFormat = _preferredOutputPixelFormat;
     videoDataOutput.videoSettings = @{(NSString *)kCVPixelBufferPixelFormatTypeKey : pixelFormat};
-    videoDataOutput.alwaysDiscardsLateVideoFrames = NO;
+    videoDataOutput.alwaysDiscardsLateVideoFrames = YES;
     [videoDataOutput setSampleBufferDelegate:self queue:self.frameQueue];
     _videoDataOutput = videoDataOutput;
 }

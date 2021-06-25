@@ -2615,6 +2615,7 @@ public:
         if (_outgoingAudioChannel) {
             _threads->getWorkerThread()->Invoke<void>(RTC_FROM_HERE, [this]() {
                 _outgoingAudioChannel->media_channel()->SetAudioSend(_outgoingAudioSsrc, !_isMuted, nullptr, &_audioSource);
+                _outgoingAudioChannel->Enable(!_isMuted);
             });
         }
     }
