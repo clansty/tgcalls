@@ -13,9 +13,11 @@
 #import "base/RTCLogging.h"
 #include "AudioDeviceModuleIOS.h"
 #include "DarwinVideoSource.h"
+#include "objc_video_encoder_factory.h"
 
 #ifdef WEBRTC_IOS
 #include "sdk/objc/components/audio/RTCAudioSession.h"
+#include "sdk/objc/components/audio/RTCAudioSessionConfiguration.h"
 #import <UIKit/UIKit.h>
 #endif // WEBRTC_IOS
 
@@ -52,6 +54,10 @@ std::unique_ptr<rtc::NetworkMonitorFactory> DarwinInterface::createNetworkMonito
 
 void DarwinInterface::configurePlatformAudio() {
 #ifdef WEBRTC_IOS
+    RTCAudioSessionConfiguration *sharedConfiguration = [RTCAudioSessionConfiguration webRTCConfiguration];
+    sharedConfiguration.categoryOptions |= AVAudioSessionCategoryOptionMixWithOthers;
+    [RTCAudioSessionConfiguration setWebRTCConfiguration:sharedConfiguration];
+
     [RTCAudioSession sharedInstance].useManualAudio = true;
     [[RTCAudioSession sharedInstance] audioSessionDidActivate:[AVAudioSession sharedInstance]];
     [RTCAudioSession sharedInstance].isAudioEnabled = true;
@@ -61,7 +67,7 @@ void DarwinInterface::configurePlatformAudio() {
 }
 
 std::unique_ptr<webrtc::VideoEncoderFactory> DarwinInterface::makeVideoEncoderFactory() {
-    return webrtc::ObjCToNativeVideoEncoderFactory([[TGRTCDefaultVideoEncoderFactory alloc] init]);
+    return std::make_unique<webrtc::CustomObjCVideoEncoderFactory>([[TGRTCDefaultVideoEncoderFactory alloc] init]);
 }
 
 std::unique_ptr<webrtc::VideoDecoderFactory> DarwinInterface::makeVideoDecoderFactory() {
