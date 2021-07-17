@@ -1255,7 +1255,7 @@ public:
     _initialInputDeviceId(std::move(descriptor.initialInputDeviceId)),
     _initialOutputDeviceId(std::move(descriptor.initialOutputDeviceId)),
     _missingPacketBuffer(50),
-    _radioMode(descriptor.enableRadioMode),
+    _stereoMode(descriptor.enableStereoMode),
     _customBitrate(descriptor.customBitrate) {
         assert(_threads->getMediaThread()->IsCurrent());
 
@@ -1695,19 +1695,6 @@ public:
             audioOptions.residual_echo_detector = true;
         }
 
-        if (_radioMode) {
-            audioOptions.echo_cancellation = false;
-            audioOptions.auto_gain_control = false;
-            audioOptions.noise_suppression = false;
-            audioOptions.highpass_filter = false;
-            audioOptions.stereo_swapping = false;
-            audioOptions.typing_detection = false;
-            audioOptions.experimental_agc = false;
-            audioOptions.experimental_ns = false;
-            audioOptions.residual_echo_detector = false;
-            audioOptions.tx_agc_limiter = false;
-        }
-
         std::vector<std::string> streamIds;
         streamIds.push_back("1");
 
@@ -1724,10 +1711,11 @@ public:
             opusMinBitrateKbps = _customBitrate;
             opusStartBitrateKbps = _customBitrate;
         }
-        if (_radioMode) {
+        if (_stereoMode) {
             opusPTimeMs = 10;
             opusCodec.SetParam(cricket::kCodecParamMaxAverageBitrate, 510000);
             opusCodec.SetParam(cricket::kCodecParamStereo, 1);
+            RTC_LOG(LS_INFO) << "Stereo mode is enabled.";
         }
         opusCodec.SetParam(cricket::kCodecParamMinBitrate, opusMinBitrateKbps);
         opusCodec.SetParam(cricket::kCodecParamStartBitrate, opusStartBitrateKbps);
@@ -2999,6 +2987,13 @@ public:
         _noiseSuppressionConfiguration->isEnabled = isNoiseSuppressionEnabled;
     }
 
+    void setIsStereoModeEnabled(bool isStereoModeEnabled) {
+        _stereoMode = isStereoModeEnabled;
+        RTC_LOG(LS_INFO) << "Destroy and re-create audio channel.";
+        destroyOutgoingAudioChannel();
+        createOutgoingAudioChannel();
+    }
+
     void addIncomingVideoOutput(std::string const &endpointId, std::weak_ptr<rtc::VideoSinkInterface<webrtc::VideoFrame>> sink) {
         if (_sharedVideoInformation && endpointId == _sharedVideoInformation->endpointId) {
             if (_videoCapture) {
@@ -3384,7 +3379,7 @@ private:
 
     rtc::scoped_refptr<webrtc::PendingTaskSafetyFlag> _workerThreadSafery;
     rtc::scoped_refptr<webrtc::PendingTaskSafetyFlag> _networkThreadSafery;
-    bool _radioMode = false;
+    bool _stereoMode = false;
     uint16_t _customBitrate = 32;
 };
 
@@ -3465,6 +3460,12 @@ void GroupInstanceCustomImpl::setIsNoiseSuppressionEnabled(bool isNoiseSuppressi
     _internal->perform(RTC_FROM_HERE, [isNoiseSuppressionEnabled](GroupInstanceCustomInternal *internal) {
         internal->setIsNoiseSuppressionEnabled(isNoiseSuppressionEnabled);
     });
+}
+
+void GroupInstanceCustomImpl::setIsStereoModeEnabled(bool isStereoModeEnabled) {
+	_internal->perform(RTC_FROM_HERE, [isStereoModeEnabled](GroupInstanceCustomInternal *internal) {
+		internal->setIsStereoModeEnabled(isStereoModeEnabled);
+	});
 }
 
 void GroupInstanceCustomImpl::setVideoCapture(std::shared_ptr<VideoCaptureInterface> videoCapture) {

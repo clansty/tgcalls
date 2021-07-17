@@ -32,6 +32,7 @@ public:
 
     void setIsMuted(bool isMuted);
     void setIsNoiseSuppressionEnabled(bool isNoiseSuppressionEnabled);
+    void setIsStereoModeEnabled(bool isStereoModeEnabled);
     void setVideoCapture(std::shared_ptr<VideoCaptureInterface> videoCapture);
     void setVideoSource(std::function<webrtc::VideoTrackSourceInterface*()> getVideoSource);
     void setAudioOutputDevice(std::string id);
