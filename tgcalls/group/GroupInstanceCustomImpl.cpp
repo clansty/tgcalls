@@ -1303,15 +1303,27 @@ public:
     void start() {
         const auto weak = std::weak_ptr<GroupInstanceCustomInternal>(shared_from_this());
 
-        webrtc::field_trial::InitFieldTrialsFromString(
-            "WebRTC-Audio-Allocation/min:32kbps,max:510kbps/"
-            "WebRTC-Audio-OpusMinPacketLossRate/Enabled-1/"
-            "WebRTC-TaskQueuePacer/Enabled/"
-            "WebRTC-VP8ConferenceTemporalLayers/1/"
-            "WebRTC-Audio-MinimizeResamplingOnMobile/Enabled/"
-            //"WebRTC-MutedStateKillSwitch/Enabled/"
-            //"WebRTC-VP8IosMaxNumberOfThread/max_thread:1/"
-        );
+        if (_videoContentType != VideoContentType::Screencast) {
+            webrtc::field_trial::InitFieldTrialsFromString(
+                "WebRTC-Audio-Allocation/min:32kbps,max:510kbps/"
+                "WebRTC-Audio-OpusMinPacketLossRate/Enabled-1/"
+                "WebRTC-TaskQueuePacer/Enabled/"
+                "WebRTC-VP8ConferenceTemporalLayers/1/"
+                "WebRTC-Audio-MinimizeResamplingOnMobile/Enabled/"
+                //"WebRTC-MutedStateKillSwitch/Enabled/"
+                //"WebRTC-VP8IosMaxNumberOfThread/max_thread:1/"
+            );
+        } else {
+            webrtc::field_trial::InitFieldTrialsFromString(
+                "WebRTC-Audio-Allocation/min:32kbps,max:32kbps/"
+                "WebRTC-Audio-OpusMinPacketLossRate/Enabled-1/"
+                "WebRTC-TaskQueuePacer/Enabled/"
+                "WebRTC-VP8ConferenceTemporalLayers/1/"
+                "WebRTC-Audio-MinimizeResamplingOnMobile/Enabled/"
+                //"WebRTC-MutedStateKillSwitch/Enabled/"
+                //"WebRTC-VP8IosMaxNumberOfThread/max_thread:1/"
+            );
+        }
 
         _networkManager.reset(new ThreadLocalObject<GroupNetworkManager>(_threads->getNetworkThread(), [weak, threads = _threads] () mutable {
             return new GroupNetworkManager(
