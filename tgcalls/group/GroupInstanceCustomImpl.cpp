@@ -1469,7 +1469,7 @@ public:
             _outgoingVideoChannel->media_channel()->SetVideoSend(_outgoingVideoSsrcs.simulcastLayers[0].ssrc, nullptr, nullptr);
             _channelManager->DestroyVideoChannel(_outgoingVideoChannel);
         });
-		_outgoingVideoChannel = nullptr;
+        _outgoingVideoChannel = nullptr;
     }
 
     void createOutgoingVideoChannel() {
@@ -1709,13 +1709,22 @@ public:
         opusCodec.AddFeedbackParam(cricket::FeedbackParam(cricket::kRtcpFbParamTransportCc));
         if (_customBitrate) {
             opusMinBitrateKbps = _customBitrate;
+            opusMaxBitrateKbps = _customBitrate;
             opusStartBitrateKbps = _customBitrate;
         }
         if (_stereoMode) {
             opusPTimeMs = 10;
-            opusCodec.SetParam(cricket::kCodecParamMaxAverageBitrate, 510000);
+            opusCodec.SetParam(cricket::kCodecParamMaxAverageBitrate, _customBitrate * 1000 * 2);
             opusCodec.SetParam(cricket::kCodecParamStereo, 1);
             RTC_LOG(LS_INFO) << "Stereo mode is enabled.";
+        } else {
+            if (_customBitrate > 64) {
+                opusMinBitrateKbps = 64;
+                opusMaxBitrateKbps = 64;
+                opusStartBitrateKbps = 64;
+            }
+            opusCodec.SetParam(cricket::kCodecParamMaxAverageBitrate, _customBitrate * 1000);
+            opusCodec.SetParam(cricket::kCodecParamStereo, 0);
         }
         opusCodec.SetParam(cricket::kCodecParamMinBitrate, opusMinBitrateKbps);
         opusCodec.SetParam(cricket::kCodecParamStartBitrate, opusStartBitrateKbps);
@@ -2286,11 +2295,19 @@ public:
                 preferences.max_bitrate_bps = std::max(preferences.min_bitrate_bps, (1020 + 32) * 1000);
             }
         } else {
-            preferences.min_bitrate_bps = _customBitrate * 1000;
-            if (resetStartBitrate) {
-                preferences.start_bitrate_bps = _customBitrate * 1000;
+            if (_customBitrate > 64 && !_stereoMode) {
+                preferences.min_bitrate_bps = 64 * 1000;
+                if (resetStartBitrate) {
+                    preferences.start_bitrate_bps = 64 * 1000;
+                }
+                preferences.max_bitrate_bps = 64 * 1000;
+            } else {
+                preferences.min_bitrate_bps = _customBitrate * 1000;
+                if (resetStartBitrate) {
+                    preferences.start_bitrate_bps = _customBitrate * 1000;
+                }
+                preferences.max_bitrate_bps = _customBitrate * 1000;
             }
-            preferences.max_bitrate_bps = _customBitrate * 1000;
         }
 
         settings.min_bitrate_bps = preferences.min_bitrate_bps;
@@ -2298,9 +2315,9 @@ public:
         settings.max_bitrate_bps = preferences.max_bitrate_bps;
 
         _call->GetTransportControllerSend()->SetSdpBitrateParameters(preferences);
-		_threads->getWorkerThread()->Invoke<void>(RTC_FROM_HERE, [&]() {
-			_call->SetClientBitratePreferences(settings);
-		});
+        _threads->getWorkerThread()->Invoke<void>(RTC_FROM_HERE, [&]() {
+            _call->SetClientBitratePreferences(settings);
+        });
     }
 
     void setIsRtcConnected(bool isConnected) {
@@ -2789,7 +2806,7 @@ public:
         }
 
         _getVideoSource = std::move(getVideoSource);
-		updateVideoSend();
+        updateVideoSend();
         if (resetBitrate) {
             adjustBitratePreferences(true);
         }
