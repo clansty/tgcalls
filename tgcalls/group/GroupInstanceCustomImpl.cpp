@@ -3463,9 +3463,9 @@ void GroupInstanceCustomImpl::setIsNoiseSuppressionEnabled(bool isNoiseSuppressi
 }
 
 void GroupInstanceCustomImpl::setIsStereoModeEnabled(bool isStereoModeEnabled) {
-	_internal->perform(RTC_FROM_HERE, [isStereoModeEnabled](GroupInstanceCustomInternal *internal) {
-		internal->setIsStereoModeEnabled(isStereoModeEnabled);
-	});
+    _internal->perform(RTC_FROM_HERE, [isStereoModeEnabled](GroupInstanceCustomInternal *internal) {
+        internal->setIsStereoModeEnabled(isStereoModeEnabled);
+    });
 }
 
 void GroupInstanceCustomImpl::setVideoCapture(std::shared_ptr<VideoCaptureInterface> videoCapture) {
