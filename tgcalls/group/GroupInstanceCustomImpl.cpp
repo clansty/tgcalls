@@ -2286,11 +2286,11 @@ public:
                 preferences.max_bitrate_bps = std::max(preferences.min_bitrate_bps, (1020 + 32) * 1000);
             }
         } else {
-            preferences.min_bitrate_bps = 32000;
+            preferences.min_bitrate_bps = _customBitrate * 1000;
             if (resetStartBitrate) {
-                preferences.start_bitrate_bps = 32000;
+                preferences.start_bitrate_bps = _customBitrate * 1000;
             }
-            preferences.max_bitrate_bps = 32000;
+            preferences.max_bitrate_bps = _customBitrate * 1000;
         }
 
         settings.min_bitrate_bps = preferences.min_bitrate_bps;
