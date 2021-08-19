@@ -1072,7 +1072,7 @@ public:
             outgoingVideoDescription->set_rtcp_reduced_size(true);
             outgoingVideoDescription->set_direction(webrtc::RtpTransceiverDirection::kRecvOnly);
             outgoingVideoDescription->set_codecs(codecs);
-            outgoingVideoDescription->set_bandwidth(1300000);
+            outgoingVideoDescription->set_bandwidth(20000000);
 
             cricket::StreamParams videoRecvStreamParams;
 
@@ -1112,7 +1112,7 @@ public:
             incomingVideoDescription->set_rtcp_reduced_size(true);
             incomingVideoDescription->set_direction(webrtc::RtpTransceiverDirection::kSendOnly);
             incomingVideoDescription->set_codecs(codecs);
-            incomingVideoDescription->set_bandwidth(1300000);
+            incomingVideoDescription->set_bandwidth(20000000);
 
             incomingVideoDescription->AddStream(videoRecvStreamParams);
 
@@ -1291,7 +1291,8 @@ public:
     _initialOutputDeviceId(std::move(descriptor.initialOutputDeviceId)),
     _missingPacketBuffer(50),
     _stereoMode(descriptor.enableStereoMode),
-    _customBitrate(descriptor.customBitrate) {
+    _customBitrate(descriptor.customBitrate),
+    _HDVideo(descriptor.enableHDVideo) {
         assert(_threads->getMediaThread()->IsCurrent());
 
         _threads->getWorkerThread()->Invoke<void>(RTC_FROM_HERE, [this] {
@@ -1589,7 +1590,7 @@ public:
         outgoingVideoDescription->set_rtcp_reduced_size(true);
         outgoingVideoDescription->set_direction(webrtc::RtpTransceiverDirection::kSendOnly);
         outgoingVideoDescription->set_codecs({ _selectedPayloadType->videoCodec, _selectedPayloadType->rtxCodec });
-        outgoingVideoDescription->set_bandwidth(1300000);
+        outgoingVideoDescription->set_bandwidth(_HDVideo ? 20000000 : 1300000);
         outgoingVideoDescription->AddStream(videoSendStreamParams);
 
         auto incomingVideoDescription = std::make_unique<cricket::VideoContentDescription>();
@@ -1624,17 +1625,20 @@ public:
                     for (int i = 0; i < (int)rtpParameters.encodings.size(); i++) {
                         if (i == 0) {
                             rtpParameters.encodings[i].min_bitrate_bps = 50000;
-                            rtpParameters.encodings[i].max_bitrate_bps = 100000;
+                            rtpParameters.encodings[i].max_bitrate_bps = _HDVideo ? 20000000 : 100000;
+                            rtpParameters.encodings[i].max_framerate = _HDVideo ? 60 : 30;
                             rtpParameters.encodings[i].scale_resolution_down_by = 4.0;
                             rtpParameters.encodings[i].active = _outgoingVideoConstraint >= 180;
                         } else if (i == 1) {
                             rtpParameters.encodings[i].min_bitrate_bps = 150000;
-                            rtpParameters.encodings[i].max_bitrate_bps = 200000;
+                            rtpParameters.encodings[i].max_bitrate_bps = _HDVideo ? 20000000 : 200000;
+                            rtpParameters.encodings[i].max_framerate = _HDVideo ? 60 : 30;
                             rtpParameters.encodings[i].scale_resolution_down_by = 2.0;
                             rtpParameters.encodings[i].active = _outgoingVideoConstraint >= 360;
                         } else if (i == 2) {
                             rtpParameters.encodings[i].min_bitrate_bps = 300000;
-                            rtpParameters.encodings[i].max_bitrate_bps = 800000 + 100000;
+                            rtpParameters.encodings[i].max_bitrate_bps = _HDVideo ? 20000000 : (800000 + 100000);
+                            rtpParameters.encodings[i].max_framerate = _HDVideo ? 60 : 30;
                             rtpParameters.encodings[i].active = _outgoingVideoConstraint >= 720;
                         }
                     }
@@ -1642,15 +1646,18 @@ public:
                     for (int i = 0; i < (int)rtpParameters.encodings.size(); i++) {
                         if (i == 0) {
                             rtpParameters.encodings[i].min_bitrate_bps = 50000;
-                            rtpParameters.encodings[i].max_bitrate_bps = 100000;
+                            rtpParameters.encodings[i].max_bitrate_bps = _HDVideo ? 20000000 : 100000;
+                            rtpParameters.encodings[0].max_framerate = _HDVideo ? 60 : 30;
                             rtpParameters.encodings[i].scale_resolution_down_by = 2.0;
                         } else if (i == 1) {
                             rtpParameters.encodings[i].min_bitrate_bps = 200000;
-                            rtpParameters.encodings[i].max_bitrate_bps = 900000 + 100000;
+                            rtpParameters.encodings[i].max_bitrate_bps = _HDVideo ? 20000000 : (900000 + 100000);
+                            rtpParameters.encodings[i].max_framerate = _HDVideo ? 60 : 30;
                         }
                     }
                 } else {
-                    rtpParameters.encodings[0].max_bitrate_bps = (800000 + 100000) * 2;
+                    rtpParameters.encodings[0].max_bitrate_bps = _HDVideo ? 20000000 : (800000 + 100000) * 2;
+                    rtpParameters.encodings[0].max_framerate = _HDVideo ? 60 : 30;
                 }
 
                 _outgoingVideoChannel->media_channel()->SetRtpSendParameters(_outgoingVideoSsrcs.simulcastLayers[0].ssrc, rtpParameters);
@@ -1662,17 +1669,20 @@ public:
                     for (int i = 0; i < (int)rtpParameters.encodings.size(); i++) {
                         if (i == 0) {
                             rtpParameters.encodings[i].min_bitrate_bps = 50000;
-                            rtpParameters.encodings[i].max_bitrate_bps = 60000;
+                            rtpParameters.encodings[i].max_bitrate_bps = _HDVideo ? 20000000 : 60000;;
+                            rtpParameters.encodings[i].max_framerate = _HDVideo ? 60 : 30;
                             rtpParameters.encodings[i].scale_resolution_down_by = 4.0;
                             rtpParameters.encodings[i].active = _outgoingVideoConstraint >= 180;
                         } else if (i == 1) {
                             rtpParameters.encodings[i].min_bitrate_bps = 100000;
-                            rtpParameters.encodings[i].max_bitrate_bps = 110000;
+                            rtpParameters.encodings[i].max_bitrate_bps = _HDVideo ? 20000000 : 110000;
+                            rtpParameters.encodings[i].max_framerate = _HDVideo ? 60 : 30;
                             rtpParameters.encodings[i].scale_resolution_down_by = 2.0;
                             rtpParameters.encodings[i].active = _outgoingVideoConstraint >= 360;
                         } else if (i == 2) {
                             rtpParameters.encodings[i].min_bitrate_bps = 300000;
-                            rtpParameters.encodings[i].max_bitrate_bps = 800000 + 100000;
+                            rtpParameters.encodings[i].max_bitrate_bps = _HDVideo ? 20000000 : (800000 + 100000) * 2;
+                            rtpParameters.encodings[i].max_framerate = _HDVideo ? 60 : 30;
                             rtpParameters.encodings[i].active = _outgoingVideoConstraint >= 720;
                         }
                     }
@@ -1680,15 +1690,18 @@ public:
                     for (int i = 0; i < (int)rtpParameters.encodings.size(); i++) {
                         if (i == 0) {
                             rtpParameters.encodings[i].min_bitrate_bps = 50000;
-                            rtpParameters.encodings[i].max_bitrate_bps = 100000;
+                            rtpParameters.encodings[i].max_bitrate_bps = _HDVideo ? 20000000 : 100000;
+                            rtpParameters.encodings[i].max_framerate = _HDVideo ? 60 : 30;
                             rtpParameters.encodings[i].scale_resolution_down_by = 4.0;
                         } else if (i == 1) {
                             rtpParameters.encodings[i].min_bitrate_bps = 200000;
-                            rtpParameters.encodings[i].max_bitrate_bps = 900000 + 100000;
+                            rtpParameters.encodings[i].max_bitrate_bps = _HDVideo ? 20000000 : (900000 + 100000);
+                            rtpParameters.encodings[i].max_framerate = _HDVideo ? 60 : 30;
                         }
                     }
                 } else {
-                    rtpParameters.encodings[0].max_bitrate_bps = (800000 + 100000) * 2;
+                    rtpParameters.encodings[0].max_bitrate_bps = _HDVideo ? 20000000 : (800000 + 100000) * 2;
+                    rtpParameters.encodings[0].max_framerate = _HDVideo ? 60 : 30;
                 }
 
                 _outgoingVideoChannel->media_channel()->SetRtpSendParameters(_outgoingVideoSsrcs.simulcastLayers[0].ssrc, rtpParameters);
@@ -2349,9 +2362,9 @@ public:
                 preferences.start_bitrate_bps = std::max(preferences.min_bitrate_bps, 400 * 1000);
             }
             if (_videoContentType == VideoContentType::Screencast) {
-                preferences.max_bitrate_bps = std::max(preferences.min_bitrate_bps, (1020 + 32) * 1000);
+                preferences.max_bitrate_bps = std::max(preferences.min_bitrate_bps, (1020 + 32) * 1000 * (_HDVideo ? 20 : 1));
             } else {
-                preferences.max_bitrate_bps = std::max(preferences.min_bitrate_bps, (1020 + 32) * 1000);
+                preferences.max_bitrate_bps = std::max(preferences.min_bitrate_bps, (1020 + 32) * 1000 * (_HDVideo ? 20 : 1));
             }
         } else {
             if (_customBitrate > 64 && !_stereoMode) {
@@ -3513,6 +3526,7 @@ private:
     rtc::scoped_refptr<webrtc::PendingTaskSafetyFlag> _networkThreadSafery;
     bool _stereoMode = false;
     uint16_t _customBitrate = 32;
+    bool _HDVideo = false;
 };
 
 GroupInstanceCustomImpl::GroupInstanceCustomImpl(GroupInstanceDescriptor &&descriptor) {

@@ -160,6 +160,7 @@ struct GroupInstanceDescriptor {
     int minOutgoingVideoBitrateKbit{100};
     bool enableStereoMode = false;
     uint16_t customBitrate = 32;
+    bool enableHDVideo = false;
 };
 
 template <typename T>
