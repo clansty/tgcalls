@@ -1440,8 +1440,7 @@ public:
                 "WebRTC-TaskQueuePacer/Enabled/"
                 "WebRTC-VP8ConferenceTemporalLayers/1/"
                 "WebRTC-Audio-MinimizeResamplingOnMobile/Enabled/"
-                //"WebRTC-MutedStateKillSwitch/Enabled/"
-                //"WebRTC-VP8IosMaxNumberOfThread/max_thread:1/"
+                "WebRTC-BweLossExperiment/Enabled/"
             );
         } else {
             webrtc::field_trial::InitFieldTrialsFromString(
@@ -1450,8 +1449,7 @@ public:
                 "WebRTC-TaskQueuePacer/Enabled/"
                 "WebRTC-VP8ConferenceTemporalLayers/1/"
                 "WebRTC-Audio-MinimizeResamplingOnMobile/Enabled/"
-                //"WebRTC-MutedStateKillSwitch/Enabled/"
-                //"WebRTC-VP8IosMaxNumberOfThread/max_thread:1/"
+            	"WebRTC-BweLossExperiment/Enabled/"
             );
         }
 
