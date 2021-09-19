@@ -959,7 +959,7 @@ public:
             outgoingAudioDescription->set_rtcp_reduced_size(true);
             outgoingAudioDescription->set_direction(webrtc::RtpTransceiverDirection::kRecvOnly);
             outgoingAudioDescription->set_codecs({ opusCodec, pcmCodec });
-            outgoingAudioDescription->set_bandwidth(1300000);
+            outgoingAudioDescription->set_bandwidth(20000000);
 
             auto incomingAudioDescription = std::make_unique<cricket::AudioContentDescription>();
             if (!isRawPcm) {
@@ -971,7 +971,7 @@ public:
             incomingAudioDescription->set_rtcp_reduced_size(true);
             incomingAudioDescription->set_direction(webrtc::RtpTransceiverDirection::kSendOnly);
             incomingAudioDescription->set_codecs({ opusCodec, pcmCodec });
-            incomingAudioDescription->set_bandwidth(1300000);
+            incomingAudioDescription->set_bandwidth(20000000);
             cricket::StreamParams streamParams = cricket::StreamParams::CreateLegacy(ssrc.networkSsrc);
             streamParams.set_stream_ids({ streamId });
             incomingAudioDescription->AddStream(streamParams);
@@ -1875,19 +1875,21 @@ public:
             opusMaxBitrateKbps = _customBitrate;
             opusStartBitrateKbps = _customBitrate;
         }
-        if (_stereoMode) {
+        if (_customBitrate >= 64 && _videoContentType != VideoContentType::Screencast) {
             opusPTimeMs = 10;
             opusCodec.SetParam(cricket::kCodecParamMaxAverageBitrate, _customBitrate * 1000 * 2);
             opusCodec.SetParam(cricket::kCodecParamStereo, 1);
             RTC_LOG(LS_INFO) << "Stereo mode is enabled.";
         } else {
-            if (_customBitrate > 64) {
-                opusMinBitrateKbps = 64;
-                opusMaxBitrateKbps = 64;
-                opusStartBitrateKbps = 64;
-            }
+            opusMinBitrateKbps = 32;
+            opusMaxBitrateKbps = 32;
+            opusStartBitrateKbps = 32;
             opusCodec.SetParam(cricket::kCodecParamMaxAverageBitrate, _customBitrate * 1000);
-            opusCodec.SetParam(cricket::kCodecParamStereo, 0);
+            if (_videoContentType == VideoContentType::Screencast) {
+				opusCodec.SetParam(cricket::kCodecParamStereo, 0);
+            } else {
+                opusCodec.SetParam(cricket::kCodecParamStereo, _stereoMode ? 1 : 0);
+            }
         }
         opusCodec.SetParam(cricket::kCodecParamMinBitrate, opusMinBitrateKbps);
         opusCodec.SetParam(cricket::kCodecParamStartBitrate, opusStartBitrateKbps);
@@ -2243,12 +2245,12 @@ public:
                 preferences.max_bitrate_bps = std::max(preferences.min_bitrate_bps, (1020 + 32) * 1000 * (_HDVideo ? 20 : 1));
             }
         } else {
-            if (_customBitrate > 64 && !_stereoMode) {
-                preferences.min_bitrate_bps = 64 * 1000;
+            if (_customBitrate >= 64 && !_stereoMode) {
+                preferences.min_bitrate_bps = 32 * 1000;
                 if (resetStartBitrate) {
-                    preferences.start_bitrate_bps = 64 * 1000;
+                    preferences.start_bitrate_bps = 32 * 1000;
                 }
-                preferences.max_bitrate_bps = 64 * 1000;
+                preferences.max_bitrate_bps = 32 * 1000;
             } else {
                 preferences.min_bitrate_bps = _customBitrate * 1000;
                 if (resetStartBitrate) {
