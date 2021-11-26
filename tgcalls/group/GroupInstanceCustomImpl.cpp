@@ -24,19 +24,19 @@
 #include "system_wrappers/include/field_trial.h"
 #include "api/video/builtin_video_bitrate_allocator_factory.h"
 #include "call/call.h"
-#include "modules/rtp_rtcp/source/rtp_utility.h"
+#include "media/base/rtp_utils.h"
 #include "api/call/audio_sink.h"
 #include "modules/audio_processing/audio_buffer.h"
 #include "absl/strings/match.h"
 #include "modules/audio_processing/agc2/vad_with_level.h"
 #include "pc/channel_manager.h"
-#include "media/base/rtp_data_engine.h"
 #include "audio/audio_state.h"
 #include "modules/audio_coding/neteq/default_neteq_factory.h"
 #include "modules/audio_coding/include/audio_coding_module.h"
 #include "common_audio/include/audio_util.h"
 #include "modules/audio_device/include/audio_device_data_observer.h"
 #include "common_audio/resampler/include/resampler.h"
+#include "modules/rtp_rtcp/source/rtp_util.h"
 
 #include "AudioFrame.h"
 #include "ThreadLocalObject.h"
@@ -476,7 +476,8 @@ private:
     VadHistory _history;
 
 public:
-    CombinedVad() {
+    CombinedVad() :
+    _vadWithLevel(40, webrtc::GetAvailableCpuFeatures()){
     }
 
     ~CombinedVad() {
@@ -665,11 +666,10 @@ public:
     }
 
     void addSink(std::weak_ptr<rtc::VideoSinkInterface<webrtc::VideoFrame>> impl) {
-        std::unique_lock<std::mutex> lock{ _mutex };
-        _sinks.push_back(impl);
-        if (_lastFrame) {
-            auto strong = impl.lock();
-            if (strong) {
+        if (const auto strong = impl.lock()) {
+            std::unique_lock<std::mutex> lock{ _mutex };
+            _sinks.push_back(impl);
+            if (_lastFrame) {
                 strong->OnFrame(_lastFrame.value());
             }
         }
@@ -987,11 +987,11 @@ public:
                 std::unique_ptr<AudioSinkImpl> audioLevelSink(new AudioSinkImpl(std::move(onAudioLevelUpdated), _ssrc, std::move(onAudioFrame)));
                 _audioChannel->media_channel()->SetRawAudioSink(ssrc.networkSsrc, std::move(audioLevelSink));
             }
+
+            _audioChannel->Enable(true);
         });
 
         //_audioChannel->SignalSentPacket().connect(this, &IncomingAudioChannel::OnSentPacket_w);
-
-        _audioChannel->Enable(true);
     }
 
     ~IncomingAudioChannel() {
@@ -1552,7 +1552,6 @@ public:
 
             _channelManager = cricket::ChannelManager::Create(
                 std::move(mediaEngine),
-                std::make_unique<cricket::RtpDataEngine>(),
                 true,
                 _threads->getWorkerThread(),
                 _threads->getNetworkThread()
@@ -1567,7 +1566,7 @@ public:
             callConfig.task_queue_factory = _taskQueueFactory.get();
             callConfig.trials = &_fieldTrials;
             callConfig.audio_state = _channelManager->media_engine()->voice().GetAudioState();
-            _call.reset(webrtc::Call::Create(callConfig, _threads->getSharedModuleThread()));
+            _call.reset(webrtc::Call::Create(callConfig, webrtc::Clock::GetRealTimeClock(), _threads->getSharedModuleThread(), webrtc::ProcessThread::Create("PacerThread")));
         });
 
         _uniqueRandomIdGenerator.reset(new rtc::UniqueRandomIdGenerator());
@@ -1697,9 +1696,11 @@ public:
         incomingVideoDescription->set_codecs({ _selectedPayloadType->videoCodec, _selectedPayloadType->rtxCodec });
         incomingVideoDescription->set_bandwidth(1300000);
 
-        _outgoingVideoChannel->SetRemoteContent(incomingVideoDescription.get(), webrtc::SdpType::kAnswer, nullptr);
-        _outgoingVideoChannel->SetLocalContent(outgoingVideoDescription.get(), webrtc::SdpType::kOffer, nullptr);
-        _outgoingVideoChannel->SetPayloadTypeDemuxingEnabled(false);
+        _threads->getWorkerThread()->Invoke<void>(RTC_FROM_HERE, [&]() {
+            _outgoingVideoChannel->SetRemoteContent(incomingVideoDescription.get(), webrtc::SdpType::kAnswer, nullptr);
+            _outgoingVideoChannel->SetLocalContent(outgoingVideoDescription.get(), webrtc::SdpType::kOffer, nullptr);
+            _outgoingVideoChannel->SetPayloadTypeDemuxingEnabled(false);
+        });
 
         //_outgoingVideoChannel->SignalSentPacket().connect(this, &GroupInstanceCustomInternal::OnSentPacket_w);
 
@@ -1916,13 +1917,15 @@ public:
         incomingAudioDescription->set_codecs({ opusCodec });
         incomingAudioDescription->set_bandwidth(1300000);
 
-        _outgoingAudioChannel->SetLocalContent(outgoingAudioDescription.get(), webrtc::SdpType::kOffer, nullptr);
-        _outgoingAudioChannel->SetRemoteContent(incomingAudioDescription.get(), webrtc::SdpType::kAnswer, nullptr);
-        _outgoingAudioChannel->SetPayloadTypeDemuxingEnabled(false);
+        _threads->getWorkerThread()->Invoke<void>(RTC_FROM_HERE, [&]() {
+            _outgoingAudioChannel->SetLocalContent(outgoingAudioDescription.get(), webrtc::SdpType::kOffer, nullptr);
+            _outgoingAudioChannel->SetRemoteContent(incomingAudioDescription.get(), webrtc::SdpType::kAnswer, nullptr);
+            _outgoingAudioChannel->SetPayloadTypeDemuxingEnabled(false);
+
+            _outgoingAudioChannel->Enable(true);
+        });
 
         //_outgoingAudioChannel->SignalSentPacket().connect(this, &GroupInstanceCustomInternal::OnSentPacket_w);
-
-        _outgoingAudioChannel->Enable(true);
 
         onUpdatedIsMuted();
 
@@ -2222,11 +2225,9 @@ public:
 
     void OnRtcpPacketReceived_n(rtc::CopyOnWriteBuffer *buffer, int64_t packet_time_us) {
         rtc::CopyOnWriteBuffer packet = *buffer;
-        _threads->getWorkerThread()->PostTask(ToQueuedTask(_workerThreadSafery, [this, packet, packet_time_us] {
-            if (_call) {
-                _call->Receiver()->DeliverPacket(webrtc::MediaType::ANY, packet, packet_time_us);
-            }
-        }));
+        if (_call) {
+            _call->Receiver()->DeliverPacket(webrtc::MediaType::ANY, packet, packet_time_us);
+        }
     }
 
     void adjustBitratePreferences(bool resetStartBitrate) {
@@ -2346,39 +2347,29 @@ public:
             }
         }
 
-        webrtc::RtpUtility::RtpHeaderParser rtpParser(packet.data(), packet.size());
-
-        webrtc::RTPHeader header;
-        if (rtpParser.RTCP()) {
-            if (!rtpParser.ParseRtcp(&header)) {
-                RTC_LOG(LS_INFO) << "Could not parse rtcp header";
-                return;
-            }
-
+        if (webrtc::IsRtcpPacket(packet)) {
             _threads->getWorkerThread()->Invoke<void>(RTC_FROM_HERE, [this, packet]() {
                 _call->Receiver()->DeliverPacket(webrtc::MediaType::ANY, packet, -1);
             });
         } else {
-            if (!rtpParser.Parse(&header)) {
-                // Probably a data channel message
+            uint32_t ssrc = webrtc::ParseRtpSsrc(packet);
+            int payloadType = webrtc::ParseRtpPayloadType(packet);
+
+            if (ssrc == _outgoingAudioSsrc) {
                 return;
             }
 
-            if (header.ssrc == _outgoingAudioSsrc) {
-                return;
-            }
-
-            auto ssrcInfo = _channelBySsrc.find(header.ssrc);
+            auto ssrcInfo = _channelBySsrc.find(ssrc);
             if (ssrcInfo == _channelBySsrc.end()) {
                 // opus
-                if (header.payloadType == 111) {
-                    maybeRequestUnknownSsrc(header.ssrc);
-                    _missingPacketBuffer.add(header.ssrc, packet);
+                if (payloadType == 111) {
+                    maybeRequestUnknownSsrc(ssrc);
+                    _missingPacketBuffer.add(ssrc, packet);
                 }
             } else {
                 switch (ssrcInfo->second.type) {
                     case ChannelSsrcInfo::Type::Audio: {
-                        const auto it = _incomingAudioChannels.find(ChannelId(header.ssrc));
+                        const auto it = _incomingAudioChannels.find(ChannelId(ssrc));
                         if (it != _incomingAudioChannels.end()) {
                             it->second->updateActivity();
                         }
