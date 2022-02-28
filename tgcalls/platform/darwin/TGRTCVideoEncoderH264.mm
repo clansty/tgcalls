@@ -245,6 +245,12 @@ CFStringRef ExtractProfile(const webrtc::H264ProfileLevelId &profile_level_id) {
 
     case webrtc::H264Profile::kProfileConstrainedHigh:
     case webrtc::H264Profile::kProfileHigh:
+#ifdef __aarch64__
+      if (profile_level_id.level < webrtc::H264Level::kLevel4) {
+          return kVTProfileLevel_H264_Main_4_0;
+      }
+#endif
+          
       switch (profile_level_id.level) {
         case webrtc::H264Level::kLevel3:
           return kVTProfileLevel_H264_High_3_0;
@@ -728,6 +734,8 @@ NSUInteger GetMaxSampleRate(const webrtc::H264ProfileLevelId &profile_level_id) 
 
 - (void)setEncoderBitrateBps:(uint32_t)bitrateBps frameRate:(uint32_t)frameRate {
   if (_compressionSession) {
+    RTC_LOG(LS_ERROR) << "TGRTCVideoEncoderH264: setting bitrate to " << bitrateBps / 1024 << " kbit/s";
+      
     SetVTSessionProperty(_compressionSession, kVTCompressionPropertyKey_AverageBitRate, bitrateBps);
 
     // With zero |_maxAllowedFrameRate|, we fall back to automatic frame rate detection.

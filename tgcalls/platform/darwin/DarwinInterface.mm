@@ -18,8 +18,8 @@
 #include "objc_video_decoder_factory.h"
 
 #ifdef WEBRTC_IOS
-#include "sdk/objc/components/audio/RTCAudioSession.h"
-#include "sdk/objc/components/audio/RTCAudioSessionConfiguration.h"
+#include "platform/darwin/iOS/RTCAudioSession.h"
+#include "platform/darwin/iOS/RTCAudioSessionConfiguration.h"
 #import <UIKit/UIKit.h>
 #endif // WEBRTC_IOS
 
@@ -73,10 +73,10 @@ void DarwinInterface::configurePlatformAudio() {
 #endif
 }
 
-std::unique_ptr<webrtc::VideoEncoderFactory> DarwinInterface::makeVideoEncoderFactory(bool preferHardwareEncoding) {
-    auto nativeFactory = std::make_unique<webrtc::CustomObjCVideoEncoderFactory>([[TGRTCDefaultVideoEncoderFactory alloc] initWithPreferHardwareH264:preferHardwareEncoding]);
-    if (!preferHardwareEncoding) {
-        auto nativeHardwareFactory = std::make_unique<webrtc::CustomObjCVideoEncoderFactory>([[TGRTCDefaultVideoEncoderFactory alloc] initWithPreferHardwareH264:true]);
+std::unique_ptr<webrtc::VideoEncoderFactory> DarwinInterface::makeVideoEncoderFactory(bool preferHardwareEncoding, bool isScreencast) {
+    auto nativeFactory = std::make_unique<webrtc::CustomObjCVideoEncoderFactory>([[TGRTCDefaultVideoEncoderFactory alloc] initWithPreferHardwareH264:preferHardwareEncoding preferX264:false]);
+    if (!preferHardwareEncoding && !isScreencast) {
+        auto nativeHardwareFactory = std::make_unique<webrtc::CustomObjCVideoEncoderFactory>([[TGRTCDefaultVideoEncoderFactory alloc] initWithPreferHardwareH264:true preferX264:false]);
         return std::make_unique<webrtc::SimulcastVideoEncoderFactory>(std::move(nativeFactory), std::move(nativeHardwareFactory));
     }
     return nativeFactory;

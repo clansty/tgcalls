@@ -25,9 +25,11 @@
 
 #import "sdk/objc/api/video_codec/RTCWrappedNativeVideoEncoder.h"
 #import "modules/video_coding/codecs/h264/include/h264.h"
+#import "h264_encoder_impl.h"
 
 @interface TGRTCDefaultVideoEncoderFactory () {
     bool _preferHardwareH264;
+    bool _preferX264;
 }
 
 @end
@@ -36,10 +38,11 @@
 
 @synthesize preferredCodec;
 
-- (instancetype)initWithPreferHardwareH264:(bool)preferHardwareH264 {
+- (instancetype)initWithPreferHardwareH264:(bool)preferHardwareH264 preferX264:(bool)preferX264 {
     self = [super init];
     if (self != nil) {
         _preferHardwareH264 = preferHardwareH264;
+        _preferX264 = preferX264;
     }
     return self;
 }
@@ -111,7 +114,16 @@
           for (NSString *key in info.parameters) {
               videoCodec.SetParam(key.UTF8String, info.parameters[key].UTF8String);
           }
-          return [[RTC_OBJC_TYPE(RTCWrappedNativeVideoEncoder) alloc] initWithNativeEncoder:std::unique_ptr<webrtc::VideoEncoder>(webrtc::H264Encoder::Create(videoCodec))];
+          
+#ifdef TGCALLS_ENABLE_X264
+          if (_preferX264) {
+              return [[RTC_OBJC_TYPE(RTCWrappedNativeVideoEncoder) alloc] initWithNativeEncoder:std::make_unique<webrtc::H264EncoderX264Impl>(videoCodec)];
+          } else {
+#endif
+              return [[RTC_OBJC_TYPE(RTCWrappedNativeVideoEncoder) alloc] initWithNativeEncoder:std::unique_ptr<webrtc::VideoEncoder>(webrtc::H264Encoder::Create(videoCodec))];
+#ifdef TGCALLS_ENABLE_X264
+          }
+#endif
       }
   } else if ([info.name isEqualToString:kRTCVideoCodecVp8Name]) {
     return [RTCVideoEncoderVP8 vp8Encoder];
@@ -126,13 +138,13 @@
 #ifdef WEBRTC_IOS
   if (@available(iOS 11, *)) {
     if ([info.name isEqualToString:kRTCVideoCodecH265Name]) {
-      return [[TGRTCVideoEncoderH265 alloc] initWithCodecInfo:info];
+      return [[RTCVideoEncoderH265 alloc] initWithCodecInfo:info];
     }
   }
 #else // WEBRTC_IOS
   if (@available(macOS 10.13, *)) {
     if ([info.name isEqualToString:kRTCVideoCodecH265Name]) {
-      return [[TGRTCVideoEncoderH265 alloc] initWithCodecInfo:info];
+      return [[RTCVideoEncoderH265 alloc] initWithCodecInfo:info];
     }
   }
 #endif // WEBRTC_IOS

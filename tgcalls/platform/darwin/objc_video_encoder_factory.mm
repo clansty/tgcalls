@@ -207,7 +207,7 @@ std::unique_ptr<VideoEncoderFactory::EncoderSelectorInterface>
 
 SimulcastVideoEncoderFactory::SimulcastVideoEncoderFactory(std::unique_ptr<CustomObjCVideoEncoderFactory> softwareFactory, std::unique_ptr<CustomObjCVideoEncoderFactory> hardwareFactory) :
     _softwareFactory(std::move(softwareFactory)),
-    _hardwareFactory(std::move(hardwareFactory)){
+    _hardwareFactory(std::move(hardwareFactory)) {
 }
 SimulcastVideoEncoderFactory::~SimulcastVideoEncoderFactory() {
 }
