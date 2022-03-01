@@ -1423,7 +1423,6 @@ public:
     _useDummyChannel(descriptor.useDummyChannel),
     _outgoingAudioBitrateKbit(descriptor.outgoingAudioBitrateKbit),
     _disableOutgoingAudioProcessing(descriptor.disableOutgoingAudioProcessing),
-    _disableAudioInput(descriptor.disableAudioInput),
     _minOutgoingVideoBitrateKbit(descriptor.minOutgoingVideoBitrateKbit),
     _videoContentType(descriptor.videoContentType),
     _videoCodecPreferences(std::move(descriptor.videoCodecPreferences)),
@@ -3436,7 +3435,6 @@ private:
     bool _useDummyChannel{true};
     int _outgoingAudioBitrateKbit{32};
     bool _disableOutgoingAudioProcessing{false};
-    bool _disableAudioInput{false};
     int _minOutgoingVideoBitrateKbit{100};
     VideoContentType _videoContentType{VideoContentType::None};
     std::vector<VideoCodecName> _videoCodecPreferences;
