@@ -17,23 +17,18 @@
 #include "api/async_dns_resolver.h"
 
 #include "TurnCustomizerImpl.h"
+#include "ReflectorRelayPortFactory.h"
 #include "SctpDataChannelProviderInterfaceImpl.h"
 #include "StaticThreads.h"
 #include "platform/PlatformInterface.h"
+#include "p2p/base/turn_port.h"
+
+#include "ReflectorPort.h"
+#include "FieldTrialsConfig.h"
 
 namespace tgcalls {
 
 namespace {
-
-NativeNetworkingImpl::ConnectionDescription::CandidateDescription connectionDescriptionFromCandidate(cricket::Candidate const &candidate) {
-    NativeNetworkingImpl::ConnectionDescription::CandidateDescription result;
-    
-    result.type = candidate.type();
-    result.protocol = candidate.protocol();
-    result.address = candidate.address().ToString();
-    
-    return result;
-}
 
 class CryptStringImpl : public rtc::CryptStringImpl {
 public:
@@ -192,6 +187,16 @@ private:
 
 }
 
+NativeNetworkingImpl::ConnectionDescription::CandidateDescription NativeNetworkingImpl::connectionDescriptionFromCandidate(cricket::Candidate const &candidate) {
+    NativeNetworkingImpl::ConnectionDescription::CandidateDescription result;
+    
+    result.type = candidate.type();
+    result.protocol = candidate.protocol();
+    result.address = candidate.address().ToString();
+    
+    return result;
+}
+
 webrtc::CryptoOptions NativeNetworkingImpl::getDefaulCryptoOptions() {
     auto options = webrtc::CryptoOptions();
     options.srtp.enable_aes128_sha1_80_crypto_cipher = true;
@@ -215,7 +220,7 @@ _dataChannelStateUpdated(configuration.dataChannelStateUpdated),
 _dataChannelMessageReceived(configuration.dataChannelMessageReceived) {
     assert(_threads->getNetworkThread()->IsCurrent());
     
-    _localIceParameters = PeerIceParameters(rtc::CreateRandomString(cricket::ICE_UFRAG_LENGTH), rtc::CreateRandomString(cricket::ICE_PWD_LENGTH));
+    _localIceParameters = PeerIceParameters(rtc::CreateRandomString(cricket::ICE_UFRAG_LENGTH), rtc::CreateRandomString(cricket::ICE_PWD_LENGTH), true);
     
     _localCertificate = rtc::RTCCertificateGenerator::GenerateCertificate(rtc::KeyParams(rtc::KT_ECDSA), absl::nullopt);
     
@@ -225,11 +230,11 @@ _dataChannelMessageReceived(configuration.dataChannelMessageReceived) {
     
     _asyncResolverFactory = std::make_unique<webrtc::WrappingAsyncDnsResolverFactory>(std::make_unique<webrtc::BasicAsyncResolverFactory>());
     
-    _dtlsSrtpTransport = std::make_unique<webrtc::DtlsSrtpTransport>(true);
+    _dtlsSrtpTransport = std::make_unique<webrtc::DtlsSrtpTransport>(true, fieldTrialsBasedConfig);
     _dtlsSrtpTransport->SetDtlsTransports(nullptr, nullptr);
     _dtlsSrtpTransport->SetActiveResetSrtpParams(false);
     _dtlsSrtpTransport->SignalReadyToSend.connect(this, &NativeNetworkingImpl::DtlsReadyToSend);
-    _dtlsSrtpTransport->SignalRtpPacketReceived.connect(this, &NativeNetworkingImpl::RtpPacketReceived_n);
+    //_dtlsSrtpTransport->SignalRtpPacketReceived.connect(this, &NativeNetworkingImpl::RtpPacketReceived_n);
     _dtlsSrtpTransport->SignalRtcpPacketReceived.connect(this, &NativeNetworkingImpl::OnRtcpPacketReceived_n);
     
     resetDtlsSrtpTransport();
@@ -255,8 +260,10 @@ void NativeNetworkingImpl::resetDtlsSrtpTransport() {
     if (_enableStunMarking) {
         _turnCustomizer.reset(new TurnCustomizerImpl());
     }
+    
+    _relayPortFactory.reset(new ReflectorRelayPortFactory(_rtcServers));
 
-    _portAllocator.reset(new cricket::BasicPortAllocator(_networkManager.get(), _socketFactory.get(), _turnCustomizer.get(), nullptr));
+    _portAllocator.reset(new cricket::BasicPortAllocator(_networkManager.get(), _socketFactory.get(), _turnCustomizer.get(), _relayPortFactory.get()));
 
     uint32_t flags = _portAllocator->flags();
 
@@ -297,6 +304,10 @@ void NativeNetworkingImpl::resetDtlsSrtpTransport() {
     std::vector<cricket::RelayServerConfig> turnServers;
 
     for (auto &server : _rtcServers) {
+        if (server.isTcp) {
+            continue;
+        }
+        
         if (server.isTurn) {
             turnServers.push_back(cricket::RelayServerConfig(
                 rtc::SocketAddress(server.host, server.port),
@@ -310,7 +321,7 @@ void NativeNetworkingImpl::resetDtlsSrtpTransport() {
         }
     }
 
-    _portAllocator->SetConfiguration(stunServers, turnServers, 2, webrtc::NO_PRUNE, _turnCustomizer.get());
+    _portAllocator->SetConfiguration(stunServers, turnServers, 0, webrtc::NO_PRUNE, _turnCustomizer.get());
 
     
     _transportChannel = cricket::P2PTransportChannel::Create("transport", 0, _portAllocator.get(), _asyncResolverFactory.get());
@@ -324,7 +335,7 @@ void NativeNetworkingImpl::resetDtlsSrtpTransport() {
     cricket::IceParameters localIceParameters(
         _localIceParameters.ufrag,
         _localIceParameters.pwd,
-        false
+        _localIceParameters.supportsRenomination
     );
 
     _transportChannel->SetIceParameters(localIceParameters);
@@ -334,7 +345,6 @@ void NativeNetworkingImpl::resetDtlsSrtpTransport() {
     _transportChannel->SignalCandidateGathered.connect(this, &NativeNetworkingImpl::candidateGathered);
     _transportChannel->SignalIceTransportStateChanged.connect(this, &NativeNetworkingImpl::transportStateChanged);
     _transportChannel->SignalCandidatePairChanged.connect(this, &NativeNetworkingImpl::candidatePairChanged);
-    _transportChannel->SignalReadPacket.connect(this, &NativeNetworkingImpl::transportPacketReceived);
     _transportChannel->SignalNetworkRouteChanged.connect(this, &NativeNetworkingImpl::transportRouteChanged);
 
     webrtc::CryptoOptions cryptoOptions = NativeNetworkingImpl::getDefaulCryptoOptions();
@@ -384,7 +394,7 @@ void NativeNetworkingImpl::start() {
         _threads
     ));
     
-    _lastNetworkActivityMs = rtc::TimeMillis();
+    _lastDisconnectedTimestamp = rtc::TimeMillis();
     checkConnectionTimeout();
 }
 
@@ -404,11 +414,9 @@ void NativeNetworkingImpl::stop() {
     _transportChannel.reset();
     _portAllocator.reset();
     
-    _localIceParameters = PeerIceParameters(rtc::CreateRandomString(cricket::ICE_UFRAG_LENGTH), rtc::CreateRandomString(cricket::ICE_PWD_LENGTH));
+    _localIceParameters = PeerIceParameters(rtc::CreateRandomString(cricket::ICE_UFRAG_LENGTH), rtc::CreateRandomString(cricket::ICE_PWD_LENGTH), true);
     
     _localCertificate = rtc::RTCCertificateGenerator::GenerateCertificate(rtc::KeyParams(rtc::KT_ECDSA), absl::nullopt);
-    
-    resetDtlsSrtpTransport();
 }
 
 PeerIceParameters NativeNetworkingImpl::getLocalIceParameters() {
@@ -429,7 +437,7 @@ void NativeNetworkingImpl::setRemoteParams(PeerIceParameters const &remoteIcePar
     cricket::IceParameters parameters(
         remoteIceParameters.ufrag,
         remoteIceParameters.pwd,
-        false
+        remoteIceParameters.supportsRenomination
     );
 
     _transportChannel->SetRemoteIceParameters(parameters);
@@ -465,7 +473,7 @@ webrtc::RtpTransport *NativeNetworkingImpl::getRtpTransport() {
 
 void NativeNetworkingImpl::checkConnectionTimeout() {
     const auto weak = std::weak_ptr<NativeNetworkingImpl>(shared_from_this());
-    _threads->getNetworkThread()->PostDelayedTask(RTC_FROM_HERE, [weak]() {
+    _threads->getNetworkThread()->PostDelayedTask([weak]() {
         auto strong = weak.lock();
         if (!strong) {
             return;
@@ -474,7 +482,9 @@ void NativeNetworkingImpl::checkConnectionTimeout() {
         int64_t currentTimestamp = rtc::TimeMillis();
         const int64_t maxTimeout = 20000;
 
-        if (strong->_lastNetworkActivityMs + maxTimeout < currentTimestamp) {
+        if (!strong->_isConnected && strong->_lastDisconnectedTimestamp + maxTimeout < currentTimestamp) {
+            RTC_LOG(LS_INFO) << "NativeNetworkingImpl timeout " << (currentTimestamp - strong->_lastDisconnectedTimestamp) << " ms";
+            
             strong->_isFailed = true;
             strong->notifyStateUpdated();
         }
@@ -509,7 +519,7 @@ void NativeNetworkingImpl::DtlsReadyToSend(bool isReadyToSend) {
 
     if (isReadyToSend) {
         const auto weak = std::weak_ptr<NativeNetworkingImpl>(shared_from_this());
-        _threads->getNetworkThread()->PostTask(RTC_FROM_HERE, [weak]() {
+        _threads->getNetworkThread()->PostTask([weak]() {
             const auto strong = weak.lock();
             if (!strong) {
                 return;
@@ -525,13 +535,6 @@ void NativeNetworkingImpl::transportStateChanged(cricket::IceTransportInternal *
 
 void NativeNetworkingImpl::transportReadyToSend(cricket::IceTransportInternal *transport) {
     assert(_threads->getNetworkThread()->IsCurrent());
-}
-
-void NativeNetworkingImpl::transportPacketReceived(rtc::PacketTransportInternal *transport, const char *bytes, size_t size, const int64_t &timestamp, int unused) {
-    assert(_threads->getNetworkThread()->IsCurrent());
-
-    _lastNetworkActivityMs = rtc::TimeMillis();
-    _isFailed = false;
 }
 
 void NativeNetworkingImpl::transportRouteChanged(absl::optional<rtc::NetworkRoute> route) {
@@ -605,6 +608,10 @@ void NativeNetworkingImpl::UpdateAggregateStates_n() {
 
     if (_isConnected != isConnected) {
         _isConnected = isConnected;
+        
+        if (!isConnected) {
+            _lastDisconnectedTimestamp = rtc::TimeMillis();
+        }
 
         notifyStateUpdated();
 

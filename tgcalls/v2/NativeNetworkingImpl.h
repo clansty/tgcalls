@@ -13,6 +13,7 @@
 #include "rtc_base/ssl_fingerprint.h"
 #include "pc/sctp_data_channel.h"
 #include "p2p/base/port.h"
+#include "api/transport/field_trial_based_config.h"
 
 #include <functional>
 #include <memory>
@@ -33,6 +34,7 @@ class BasicPortAllocator;
 class P2PTransportChannel;
 class IceTransportInternal;
 class DtlsTransport;
+class RelayPortFactoryInterface;
 } // namespace cricket
 
 namespace webrtc {
@@ -143,6 +145,7 @@ public:
     };
     
     static webrtc::CryptoOptions getDefaulCryptoOptions();
+    static ConnectionDescription::CandidateDescription connectionDescriptionFromCandidate(cricket::Candidate const &candidate);
 
     NativeNetworkingImpl(Configuration &&configuration);
     ~NativeNetworkingImpl();
@@ -168,7 +171,6 @@ private:
     void OnTransportReceivingState_n(rtc::PacketTransportInternal *transport);
     void transportStateChanged(cricket::IceTransportInternal *transport);
     void transportReadyToSend(cricket::IceTransportInternal *transport);
-    void transportPacketReceived(rtc::PacketTransportInternal *transport, const char *bytes, size_t size, const int64_t &timestamp, int unused);
     void transportRouteChanged(absl::optional<rtc::NetworkRoute> route);
     void candidatePairChanged(cricket::CandidatePairChangeEvent const &event);
     void DtlsReadyToSend(bool DtlsReadyToSend);
@@ -200,6 +202,7 @@ private:
     std::unique_ptr<rtc::BasicPacketSocketFactory> _socketFactory;
     std::unique_ptr<rtc::BasicNetworkManager> _networkManager;
     std::unique_ptr<webrtc::TurnCustomizer> _turnCustomizer;
+    std::unique_ptr<cricket::RelayPortFactoryInterface> _relayPortFactory;
     std::unique_ptr<cricket::BasicPortAllocator> _portAllocator;
     std::unique_ptr<webrtc::AsyncDnsResolverFactoryInterface> _asyncResolverFactory;
     std::unique_ptr<cricket::P2PTransportChannel> _transportChannel;
@@ -214,7 +217,7 @@ private:
 
     bool _isConnected = false;
     bool _isFailed = false;
-    int64_t _lastNetworkActivityMs = 0;
+    int64_t _lastDisconnectedTimestamp = 0;
     absl::optional<RouteDescription> _currentRouteDescription;
     absl::optional<ConnectionDescription> _currentConnectionDescription;
 };

@@ -3,6 +3,7 @@
 #include "Message.h"
 
 #include "p2p/base/basic_packet_socket_factory.h"
+#include "v2/ReflectorRelayPortFactory.h"
 #include "p2p/client/basic_port_allocator.h"
 #include "p2p/base/p2p_transport_channel.h"
 #include "p2p/base/basic_async_resolver_factory.h"
@@ -88,7 +89,7 @@ _isOutgoing(encryptionKey.isOutgoing),
 _stateUpdated(std::move(stateUpdated)),
 _transportMessageReceived(std::move(transportMessageReceived)),
 _sendSignalingMessage(std::move(sendSignalingMessage)),
-_localIceParameters(rtc::CreateRandomString(cricket::ICE_UFRAG_LENGTH), rtc::CreateRandomString(cricket::ICE_PWD_LENGTH)) {
+_localIceParameters(rtc::CreateRandomString(cricket::ICE_UFRAG_LENGTH), rtc::CreateRandomString(cricket::ICE_PWD_LENGTH), false) {
 	assert(_thread->IsCurrent());
 
     _networkMonitorFactory = PlatformInterface::SharedInstance()->createNetworkMonitorFactory();
@@ -116,7 +117,9 @@ void NetworkManager::start() {
         _turnCustomizer.reset(new TurnCustomizerImpl());
     }
     
-    _portAllocator.reset(new cricket::BasicPortAllocator(_networkManager.get(), _socketFactory.get(), _turnCustomizer.get(), nullptr));
+    _relayPortFactory.reset(new ReflectorRelayPortFactory(_rtcServers));
+    
+    _portAllocator.reset(new cricket::BasicPortAllocator(_networkManager.get(), _socketFactory.get(), _turnCustomizer.get(), _relayPortFactory.get()));
 
     uint32_t flags = _portAllocator->flags();
     
@@ -154,6 +157,10 @@ void NetworkManager::start() {
     std::vector<cricket::RelayServerConfig> turnServers;
 
     for (auto &server : _rtcServers) {
+        if (server.isTcp) {
+            continue;
+        }
+        
         if (server.isTurn) {
             turnServers.push_back(cricket::RelayServerConfig(
                 rtc::SocketAddress(server.host, server.port),
@@ -207,7 +214,7 @@ void NetworkManager::receiveSignalingMessage(DecryptedMessage &&message) {
 	assert(list != nullptr);
 
     if (!_remoteIceParameters.has_value()) {
-        PeerIceParameters parameters(list->iceParameters.ufrag, list->iceParameters.pwd);
+        PeerIceParameters parameters(list->iceParameters.ufrag, list->iceParameters.pwd, false);
         _remoteIceParameters = parameters;
 
         cricket::IceParameters remoteIceParameters(
@@ -275,7 +282,7 @@ void NetworkManager::logCurrentNetworkState() {
 
 void NetworkManager::checkConnectionTimeout() {
     const auto weak = std::weak_ptr<NetworkManager>(shared_from_this());
-    _thread->PostDelayedTask(RTC_FROM_HERE, [weak]() {
+    _thread->PostDelayedTask([weak]() {
         auto strong = weak.lock();
         if (!strong) {
             return;
