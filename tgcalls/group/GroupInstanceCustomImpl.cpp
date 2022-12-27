@@ -3617,7 +3617,7 @@ void GroupInstanceCustomImpl::setIsNoiseSuppressionEnabled(bool isNoiseSuppressi
 }
 
 void GroupInstanceCustomImpl::setIsStereoModeEnabled(bool isStereoModeEnabled) {
-    _internal->perform(RTC_FROM_HERE, [isStereoModeEnabled](GroupInstanceCustomInternal *internal) {
+    _internal->perform([isStereoModeEnabled](GroupInstanceCustomInternal *internal) {
         internal->setIsStereoModeEnabled(isStereoModeEnabled);
     });
 }
