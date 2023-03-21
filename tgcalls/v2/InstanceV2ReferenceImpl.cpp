@@ -458,6 +458,11 @@ public:
 
         cricket::MediaEngineDependencies mediaDeps;
         mediaDeps.adm = _audioDeviceModule;
+        
+        webrtc:: AudioProcessingBuilder builder;
+        mediaDeps.audio_processing = builder.Create();
+
+        
         mediaDeps.task_queue_factory = peerConnectionFactoryDependencies.task_queue_factory.get();
         mediaDeps.audio_encoder_factory = webrtc::CreateAudioEncoderFactory<webrtc::AudioEncoderOpus>();
         mediaDeps.audio_decoder_factory = webrtc::CreateAudioDecoderFactory<webrtc::AudioDecoderOpus>();
@@ -648,10 +653,8 @@ public:
             if (server.isTurn) {
                 webrtc::PeerConnectionInterface::IceServer mappedServer;
 
-                std::ostringstream uri;
-                uri << "turn:" << address.HostAsURIString() << ":" << server.port;
-
-                mappedServer.urls.push_back(uri.str());
+                mappedServer.urls.push_back(
+                    "turn:" + address.HostAsURIString() + ":" + std::to_string(server.port));
                 mappedServer.username = server.login;
                 mappedServer.password = server.password;
 
@@ -659,10 +662,8 @@ public:
             } else {
                 webrtc::PeerConnectionInterface::IceServer mappedServer;
 
-                std::ostringstream uri;
-                uri << "stun:" << address.HostAsURIString() << ":" << server.port;
-
-                mappedServer.urls.push_back(uri.str());
+                mappedServer.urls.push_back(
+                    "stun:" + address.HostAsURIString() + ":" + std::to_string(server.port));
 
                 peerConnectionConfiguration.servers.push_back(mappedServer);
             }
@@ -1450,14 +1451,10 @@ public:
         for (const auto &record : _networkStateLogRecords) {
             json11::Json::object jsonRecord;
 
-            std::ostringstream timestampString;
-
             if (baseTimestamp == 0) {
                 baseTimestamp = record.timestamp;
             }
-            timestampString << (record.timestamp - baseTimestamp);
-
-            jsonRecord.insert(std::make_pair("t", json11::Json(timestampString.str())));
+            jsonRecord.insert(std::make_pair("t", json11::Json(std::to_string(record.timestamp - baseTimestamp))));
             jsonRecord.insert(std::make_pair("c", json11::Json(record.record.isConnected ? 1 : 0)));
             if (record.record.route) {
                 jsonRecord.insert(std::make_pair("local", json11::Json(record.record.route->localDescription)));

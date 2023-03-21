@@ -57,9 +57,7 @@ namespace tgcalls {
 namespace {
 
 static std::string intToString(int value) {
-    std::ostringstream stringStream;
-    stringStream << value;
-    return stringStream.str();
+    return std::to_string(value);
 }
 
 static VideoCaptureInterfaceObject *GetVideoCaptureAssumingSameThread(VideoCaptureInterface *videoCapture) {
@@ -1332,6 +1330,10 @@ public:
         mediaDeps.video_decoder_factory = PlatformInterface::SharedInstance()->makeVideoDecoderFactory();
 
         mediaDeps.adm = _audioDeviceModule;
+        
+        webrtc:: AudioProcessingBuilder builder;
+        mediaDeps.audio_processing = builder.Create();
+
 
         _availableVideoFormats = mediaDeps.video_encoder_factory->GetSupportedFormats();
 
