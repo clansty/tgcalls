@@ -41,9 +41,13 @@ public:
     
     // Create a TURN port using the shared UDP socket, `socket`.
     static std::unique_ptr<ReflectorPort> Create(
-                                                 const cricket::CreateRelayPortArgs& args,
-                                                 rtc::AsyncPacketSocket* socket,
-                                                 uint8_t serverId, int server_priority) {
+        const cricket::CreateRelayPortArgs& args,
+        rtc::AsyncPacketSocket* socket,
+        uint8_t serverId,
+        int server_priority,
+        bool standaloneReflectorMode,
+        uint32_t standaloneReflectorRoleId
+    ) {
         // Do basic parameter validation.
         if (args.config->credentials.username.size() > 32) {
             RTC_LOG(LS_ERROR) << "Attempt to use REFLECTOR with a too long username "
@@ -57,16 +61,20 @@ public:
             return nullptr;
         }
         // Using `new` to access a non-public constructor.
-        return absl::WrapUnique(new ReflectorPort(args, socket, serverId, server_priority));
+        return absl::WrapUnique(new ReflectorPort(args, socket, serverId, server_priority, standaloneReflectorMode, standaloneReflectorRoleId));
     }
     
     // Create a TURN port that will use a new socket, bound to `network` and
     // using a port in the range between `min_port` and `max_port`.
     static std::unique_ptr<ReflectorPort> Create(
-                                                 const cricket::CreateRelayPortArgs& args,
-                                                 uint16_t min_port,
-                                                 uint16_t max_port,
-                                                 uint8_t serverId, int server_priority) {
+        const cricket::CreateRelayPortArgs& args,
+        uint16_t min_port,
+        uint16_t max_port,
+        uint8_t serverId,
+        int server_priority,
+        bool standaloneReflectorMode,
+        uint32_t standaloneReflectorRoleId
+    ) {
         // Do basic parameter validation.
         if (args.config->credentials.username.size() > 32) {
             RTC_LOG(LS_ERROR) << "Attempt to use TURN with a too long username "
@@ -80,7 +88,7 @@ public:
             return nullptr;
         }
         // Using `new` to access a non-public constructor.
-        return absl::WrapUnique(new ReflectorPort(args, min_port, max_port, serverId, server_priority));
+        return absl::WrapUnique(new ReflectorPort(args, min_port, max_port, serverId, server_priority, standaloneReflectorMode, standaloneReflectorRoleId));
     }
     
     ~ReflectorPort() override;
@@ -156,12 +164,18 @@ public:
 protected:
     ReflectorPort(const cricket::CreateRelayPortArgs& args,
                   rtc::AsyncPacketSocket* socket,
-                  uint8_t serverId, int server_priority);
+                  uint8_t serverId,
+                  int server_priority,
+                  bool standaloneReflectorMode,
+                  uint32_t standaloneReflectorRoleId);
     
     ReflectorPort(const cricket::CreateRelayPortArgs& args,
                   uint16_t min_port,
                   uint16_t max_port,
-                  uint8_t serverId, int server_priority);
+                  uint8_t serverId,
+                  int server_priority,
+                  bool standaloneReflectorMode,
+                  uint32_t standaloneReflectorRoleId);
     
     rtc::DiffServCodePoint StunDscpValue() const override;
     
@@ -214,6 +228,8 @@ private:
     // By default the value will be set to 0. This value will be used in
     // calculating the candidate priority.
     int server_priority_;
+    bool standaloneReflectorMode_ = false;
+    uint32_t standaloneReflectorRoleId_ = 0;
     
     // Optional TurnCustomizer that can modify outgoing messages. Once set, this
     // must outlive the ReflectorPort's lifetime.

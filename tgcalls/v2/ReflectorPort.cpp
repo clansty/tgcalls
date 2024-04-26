@@ -55,7 +55,10 @@ static int GetRelayPreference(cricket::ProtocolType proto) {
 
 ReflectorPort::ReflectorPort(const cricket::CreateRelayPortArgs& args,
                              rtc::AsyncPacketSocket* socket,
-                             uint8_t serverId, int server_priority)
+                             uint8_t serverId,
+                             int server_priority,
+                             bool standaloneReflectorMode,
+                             uint32_t standaloneReflectorRoleId)
 : Port(args.network_thread,
     cricket::RELAY_PORT_TYPE,
     args.socket_factory,
@@ -68,23 +71,32 @@ socket_(socket),
 error_(0),
 stun_dscp_value_(rtc::DSCP_NO_CHANGE),
 state_(STATE_CONNECTING),
-server_priority_(server_priority) {
+server_priority_(server_priority),
+standaloneReflectorMode_(standaloneReflectorMode),
+standaloneReflectorRoleId_(standaloneReflectorRoleId) {
     serverId_ = serverId;
-
     auto rawPeerTag = parseHex(args.config->credentials.password);
-    auto generator = std::mt19937(std::random_device()());
-    auto distribution = std::uniform_int_distribution<uint32_t>();
-    do {
-        randomTag_ = distribution(generator);
-    } while (!randomTag_);
     peer_tag_.AppendData(rawPeerTag.data(), rawPeerTag.size() - 4);
+    
+    if (standaloneReflectorMode_) {
+        randomTag_ = standaloneReflectorRoleId_;
+    } else {
+        auto generator = std::mt19937(std::random_device()());
+        auto distribution = std::uniform_int_distribution<uint32_t>();
+        do {
+            randomTag_ = distribution(generator);
+        } while (!randomTag_);
+    }
     peer_tag_.AppendData((uint8_t *)&randomTag_, 4);
 }
 
 ReflectorPort::ReflectorPort(const cricket::CreateRelayPortArgs& args,
                              uint16_t min_port,
                              uint16_t max_port,
-                             uint8_t serverId, int server_priority)
+                             uint8_t serverId,
+                             int server_priority,
+                             bool standaloneReflectorMode,
+                             uint32_t standaloneReflectorRoleId)
 : Port(args.network_thread,
        cricket::RELAY_PORT_TYPE,
        args.socket_factory,
@@ -99,16 +111,23 @@ socket_(NULL),
 error_(0),
 stun_dscp_value_(rtc::DSCP_NO_CHANGE),
 state_(STATE_CONNECTING),
-server_priority_(server_priority) {
+server_priority_(server_priority),
+standaloneReflectorMode_(standaloneReflectorMode),
+standaloneReflectorRoleId_(standaloneReflectorRoleId) {
     serverId_ = serverId;
 
     auto rawPeerTag = parseHex(args.config->credentials.password);
-    auto generator = std::mt19937(std::random_device()());
-    auto distribution = std::uniform_int_distribution<uint32_t>();
-    do {
-        randomTag_ = distribution(generator);
-    } while (!randomTag_);
     peer_tag_.AppendData(rawPeerTag.data(), rawPeerTag.size() - 4);
+    
+    if (standaloneReflectorMode_) {
+        randomTag_ = standaloneReflectorRoleId_;
+    } else {
+        auto generator = std::mt19937(std::random_device()());
+        auto distribution = std::uniform_int_distribution<uint32_t>();
+        do {
+            randomTag_ = distribution(generator);
+        } while (!randomTag_);
+    }
     peer_tag_.AppendData((uint8_t *)&randomTag_, 4);
 }
 
@@ -242,8 +261,12 @@ bool ReflectorPort::CreateReflectorClientSocket() {
     RTC_DCHECK(!socket_ || SharedSocket());
 
     if (server_address_.proto == cricket::PROTO_UDP && !SharedSocket()) {
-        socket_ = socket_factory()->CreateUdpSocket(
-                                                    rtc::SocketAddress(Network()->GetBestIP(), 0), min_port(), max_port());
+        if (standaloneReflectorMode_ && Network()->name() == "shared-reflector-network") {
+            const rtc::IPAddress ipv4_any_address(INADDR_ANY);
+            socket_ = socket_factory()->CreateUdpSocket(rtc::SocketAddress(ipv4_any_address, 12345), min_port(), max_port());
+        } else {
+            socket_ = socket_factory()->CreateUdpSocket(rtc::SocketAddress(Network()->GetBestIP(), 0), min_port(), max_port());
+        }
     } else if (server_address_.proto == cricket::PROTO_TCP) {
         RTC_DCHECK(!SharedSocket());
         int opts = rtc::PacketSocketFactory::OPT_STUN;
@@ -563,6 +586,7 @@ bool ReflectorPort::HandleIncomingPacket(rtc::AsyncPacketSocket* socket, rtc::Re
         
         const auto ipFormat = "reflector-" + std::to_string((uint32_t)serverId_) + "-" + std::to_string(randomTag_) + ".reflector";
         rtc::SocketAddress candidateAddress(ipFormat, server_address_.address.port());
+        candidateAddress.SetResolvedIP(server_address_.address.ipaddr());
         
         // For relayed candidate, Base is the candidate itself.
         AddAddress(candidateAddress,          // Candidate address.

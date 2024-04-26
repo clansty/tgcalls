@@ -4,7 +4,6 @@
 #include "VideoCaptureInterfaceImpl.h"
 #include "VideoCapturerInterface.h"
 #include "v2/NativeNetworkingImpl.h"
-#include "v2/DirectNetworkingImpl.h"
 #include "v2/Signaling.h"
 #include "v2/ContentNegotiation.h"
 
@@ -68,6 +67,15 @@
 
 namespace tgcalls {
 namespace {
+
+bool getCustomParameterBool(std::map<std::string, json11::Json> const &parameters, std::string const &name) {
+    const auto value = parameters.find(name);
+    if (value != parameters.end() && value->second.is_bool() && value->second.bool_value()) {
+        return true;
+    } else {
+        return false;
+    }
+}
 
 enum class SignalingProtocolVersion {
     V1,
@@ -1013,138 +1021,72 @@ public:
             proxy = *(_proxy.get());
         }
 
-        _networking.reset(new ThreadLocalObject<InstanceNetworking>(_threads->getNetworkThread(), [weak, threads = _threads, encryptionKey = _encryptionKey, isOutgoing = _encryptionKey.isOutgoing, rtcServers = _rtcServers, proxy, enableP2P = _enableP2P, directConnectionChannel = _directConnectionChannel]() {
-            if (directConnectionChannel) {
-                return std::static_pointer_cast<InstanceNetworking>(std::make_shared<DirectNetworkingImpl>(InstanceNetworking::Configuration {
-                    .encryptionKey = encryptionKey,
-                    .isOutgoing = isOutgoing,
-                    .enableStunMarking = false,
-                    .enableTCP = false,
-                    .enableP2P = enableP2P,
-                    .rtcServers = rtcServers,
-                    .proxy = proxy,
-                    .stateUpdated = [threads, weak](const InstanceNetworking::State &state) {
-                        threads->getMediaThread()->PostTask([=] {
-                            const auto strong = weak.lock();
-                            if (!strong) {
-                                return;
-                            }
-                            strong->onNetworkStateUpdated(state);
-                        });
-                    },
-                        .candidateGathered = [threads, weak](const cricket::Candidate &candidate) {
-                            threads->getMediaThread()->PostTask([=] {
-                                const auto strong = weak.lock();
-                                if (!strong) {
-                                    return;
-                                }
+        _networking.reset(new ThreadLocalObject<InstanceNetworking>(_threads->getNetworkThread(), [weak, threads = _threads, encryptionKey = _encryptionKey, isOutgoing = _encryptionKey.isOutgoing, rtcServers = _rtcServers, proxy, enableP2P = _enableP2P, customParameters = _customParameters]() {
+            return std::static_pointer_cast<InstanceNetworking>(std::make_shared<NativeNetworkingImpl>(InstanceNetworking::Configuration{
+                .encryptionKey = encryptionKey,
+                .isOutgoing = isOutgoing,
+                .enableStunMarking = false,
+                .enableTCP = false,
+                .enableP2P = enableP2P,
+                .rtcServers = rtcServers,
+                .proxy = proxy,
+                .stateUpdated = [threads, weak](const InstanceNetworking::State &state) {
+                    threads->getMediaThread()->PostTask([=] {
+                        const auto strong = weak.lock();
+                        if (!strong) {
+                            return;
+                        }
+                        strong->onNetworkStateUpdated(state);
+                    });
+                },
+                .candidateGathered = [threads, weak](const cricket::Candidate &candidate) {
+                    threads->getMediaThread()->PostTask([=] {
+                        const auto strong = weak.lock();
+                        if (!strong) {
+                            return;
+                        }
 
-                                strong->sendCandidate(candidate);
-                            });
-                        },
-                        .transportMessageReceived = [threads, weak](rtc::CopyOnWriteBuffer const &packet, bool isMissing) {
-                            threads->getMediaThread()->PostTask([=] {
-                                const auto strong = weak.lock();
-                                if (!strong) {
-                                    return;
-                                }
-                            });
-                        },
-                        .rtcpPacketReceived = [threads, weak](rtc::CopyOnWriteBuffer const &packet, int64_t timestamp) {
-                            const auto strong = weak.lock();
-                            if (!strong) {
-                                return;
-                            }
-                            strong->_call->Receiver()->DeliverRtcpPacket(packet);
-                        },
-                        .dataChannelStateUpdated = [threads, weak](bool isDataChannelOpen) {
-                            threads->getMediaThread()->PostTask([=] {
-                                const auto strong = weak.lock();
-                                if (!strong) {
-                                    return;
-                                }
-                                strong->onDataChannelStateUpdated(isDataChannelOpen);
-                            });
-                        },
-                        .dataChannelMessageReceived = [threads, weak](std::string const &message) {
-                            threads->getMediaThread()->PostTask([=] {
-                                const auto strong = weak.lock();
-                                if (!strong) {
-                                    return;
-                                }
-                                strong->onDataChannelMessage(message);
-                            });
-                        },
-                        .threads = threads,
-                        .directConnectionChannel = directConnectionChannel,
-                }));
-            } else {
-                return std::static_pointer_cast<InstanceNetworking>(std::make_shared<NativeNetworkingImpl>(InstanceNetworking::Configuration{
-                    .encryptionKey = encryptionKey,
-                    .isOutgoing = isOutgoing,
-                    .enableStunMarking = false,
-                    .enableTCP = false,
-                    .enableP2P = enableP2P,
-                    .rtcServers = rtcServers,
-                    .proxy = proxy,
-                    .stateUpdated = [threads, weak](const InstanceNetworking::State &state) {
-                        threads->getMediaThread()->PostTask([=] {
-                            const auto strong = weak.lock();
-                            if (!strong) {
-                                return;
-                            }
-                            strong->onNetworkStateUpdated(state);
-                        });
-                    },
-                    .candidateGathered = [threads, weak](const cricket::Candidate &candidate) {
-                        threads->getMediaThread()->PostTask([=] {
-                            const auto strong = weak.lock();
-                            if (!strong) {
-                                return;
-                            }
-
-                            strong->sendCandidate(candidate);
-                        });
-                    },
-                    .transportMessageReceived = [threads, weak](rtc::CopyOnWriteBuffer const &packet, bool isMissing) {
-                        threads->getMediaThread()->PostTask([=] {
-                            const auto strong = weak.lock();
-                            if (!strong) {
-                                return;
-                            }
-                        });
-                    },
-                    .rtcpPacketReceived = [threads, weak](rtc::CopyOnWriteBuffer const &packet, int64_t timestamp) {
-                        threads->getWorkerThread()->PostTask([weak, packet]() {
-                            const auto strong = weak.lock();
-                            if (!strong) {
-                                return;
-                            }
-                            strong->_call->Receiver()->DeliverRtcpPacket(packet);
-                        });
-                    },
-                    .dataChannelStateUpdated = [threads, weak](bool isDataChannelOpen) {
-                        threads->getMediaThread()->PostTask([=] {
-                            const auto strong = weak.lock();
-                            if (!strong) {
-                                return;
-                            }
-                            strong->onDataChannelStateUpdated(isDataChannelOpen);
-                        });
-                    },
-                    .dataChannelMessageReceived = [threads, weak](std::string const &message) {
-                        threads->getMediaThread()->PostTask([=] {
-                            const auto strong = weak.lock();
-                            if (!strong) {
-                                return;
-                            }
-                            strong->onDataChannelMessage(message);
-                        });
-                    },
-                    .threads = threads,
-                    .directConnectionChannel = directConnectionChannel,
-                }));
-            }
+                        strong->sendCandidate(candidate);
+                    });
+                },
+                .transportMessageReceived = [threads, weak](rtc::CopyOnWriteBuffer const &packet, bool isMissing) {
+                    threads->getMediaThread()->PostTask([=] {
+                        const auto strong = weak.lock();
+                        if (!strong) {
+                            return;
+                        }
+                    });
+                },
+                .rtcpPacketReceived = [threads, weak](rtc::CopyOnWriteBuffer const &packet, int64_t timestamp) {
+                    threads->getWorkerThread()->PostTask([weak, packet]() {
+                        const auto strong = weak.lock();
+                        if (!strong) {
+                            return;
+                        }
+                        strong->_call->Receiver()->DeliverRtcpPacket(packet);
+                    });
+                },
+                .dataChannelStateUpdated = [threads, weak](bool isDataChannelOpen) {
+                    threads->getMediaThread()->PostTask([=] {
+                        const auto strong = weak.lock();
+                        if (!strong) {
+                            return;
+                        }
+                        strong->onDataChannelStateUpdated(isDataChannelOpen);
+                    });
+                },
+                .dataChannelMessageReceived = [threads, weak](std::string const &message) {
+                    threads->getMediaThread()->PostTask([=] {
+                        const auto strong = weak.lock();
+                        if (!strong) {
+                            return;
+                        }
+                        strong->onDataChannelMessage(message);
+                    });
+                },
+                .threads = threads,
+                .customParameters = customParameters
+            }));
         }));
 
         PlatformInterface::SharedInstance()->configurePlatformAudio();
@@ -1381,6 +1323,7 @@ public:
 
         if (_encryptionKey.isOutgoing) {
             sendInitialSetup();
+            sendOfferIfNeeded();
         }
     }
 
@@ -1761,9 +1704,7 @@ public:
 
             _handshakeCompleted = true;
 
-            if (_encryptionKey.isOutgoing) {
-                sendOfferIfNeeded();
-            } else {
+            if (!_encryptionKey.isOutgoing) {
                 sendInitialSetup();
             }
 
@@ -2235,6 +2176,7 @@ private:
     std::function<webrtc::scoped_refptr<webrtc::AudioDeviceModule>(webrtc::TaskQueueFactory*)> _createAudioDeviceModule;
     MediaDevicesConfig _devicesConfig;
     FilePath _statsLogPath;
+    
     std::map<std::string, json11::Json> _customParameters;
 
     std::unique_ptr<SignalingConnection> _signalingConnection;

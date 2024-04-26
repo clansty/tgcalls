@@ -449,7 +449,7 @@ public:
             _audioDeviceModule = createAudioDeviceModule();
         });
 
-        _relayPortFactory.reset(new ReflectorRelayPortFactory(_rtcServers));
+        _relayPortFactory.reset(new ReflectorRelayPortFactory(_rtcServers, false, 0));
 
         webrtc::PeerConnectionFactoryDependencies peerConnectionFactoryDependencies;
         peerConnectionFactoryDependencies.signaling_thread = _threads->getMediaThread();
