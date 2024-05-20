@@ -586,7 +586,9 @@ bool ReflectorPort::HandleIncomingPacket(rtc::AsyncPacketSocket* socket, rtc::Re
         
         const auto ipFormat = "reflector-" + std::to_string((uint32_t)serverId_) + "-" + std::to_string(randomTag_) + ".reflector";
         rtc::SocketAddress candidateAddress(ipFormat, server_address_.address.port());
-        candidateAddress.SetResolvedIP(server_address_.address.ipaddr());
+        if (standaloneReflectorMode_) {
+            candidateAddress.SetResolvedIP(server_address_.address.ipaddr());
+        }
         
         // For relayed candidate, Base is the candidate itself.
         AddAddress(candidateAddress,          // Candidate address.
