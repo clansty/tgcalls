@@ -166,8 +166,12 @@ class AudioDeviceIOS : public AudioDeviceGeneric,
                             UInt32 bus_number,
                             UInt32 num_frames,
                             AudioBufferList* io_data) override;
+  void OnMutedSpeechStatusChanged(bool isDetectingSpeech) override;
 
   bool IsInterrupted();
+                           
+ public:
+  void (^mutedSpeechDetectionChanged)(bool);
 
  private:
   // Called by the relevant AudioSessionObserver methods on `thread_`.
@@ -315,6 +319,8 @@ class AudioDeviceIOS : public AudioDeviceGeneric,
                            
   bool isBufferPlaying_ = false;
   bool isBufferRecording_ = false;
+                           
+  bool isMicrophoneMuted_ = false;
 };
 }  // namespace tgcalls_ios_adm
 }  // namespace webrtc

@@ -93,6 +93,10 @@ AudioDeviceModuleIOS::AudioDeviceModuleIOS(bool bypass_voice_processing, bool di
     audio_device_buffer_.reset(new webrtc::AudioDeviceBuffer(task_queue_factory_.get()));
     audio_device_.reset(new tgcalls_ios_adm::AudioDeviceIOS(bypass_voice_processing_, disable_recording_, numChannels_));
     RTC_CHECK(audio_device_);
+      
+      if (audio_device_) {
+          audio_device_->mutedSpeechDetectionChanged = [mutedSpeechDetectionChanged copy];
+      }
 
     this->AttachAudioBuffer();
 

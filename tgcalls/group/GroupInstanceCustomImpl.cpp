@@ -1449,7 +1449,8 @@ public:
     _createAudioDeviceModule(descriptor.createAudioDeviceModule),
     _initialInputDeviceId(std::move(descriptor.initialInputDeviceId)),
     _initialOutputDeviceId(std::move(descriptor.initialOutputDeviceId)),
-    _missingPacketBuffer(50) {
+    _missingPacketBuffer(50),
+    _onMutedSpeechActivityDetected(std::move(descriptor.onMutedSpeechActivityDetected)) {
         assert(_threads->getMediaThread()->IsCurrent());
 
         _threads->getWorkerThread()->BlockingCall([this] {
@@ -1575,10 +1576,17 @@ public:
 
         _audioDeviceDataObserverShared = std::make_shared<AudioDeviceDataObserverShared>();
 
-        _threads->getWorkerThread()->BlockingCall([this]() mutable {
+        _threads->getWorkerThread()->BlockingCall([this, isMuted = _isMuted]() mutable {
             _audioDeviceModule = createAudioDeviceModule();
             if (!_audioDeviceModule) {
                 return;
+            }
+            
+            bool isDeviceMuteAvailable = false;
+            if (_audioDeviceModule->MicrophoneMuteIsAvailable(&isDeviceMuteAvailable) == 0) {
+                if (isDeviceMuteAvailable) {
+                    _audioDeviceModule->SetMicrophoneMute(isMuted);
+                }
             }
         });
         
@@ -3028,9 +3036,30 @@ public:
         if (_outgoingAudioChannel) {
             _threads->getWorkerThread()->BlockingCall([this]() {
                 _outgoingAudioChannel->send_channel()->SetAudioSend(_outgoingAudioSsrc, !_isMuted, nullptr, &_audioSource);
+                
+                if (_audioDeviceModule) {
+                    bool isDeviceMuteAvailable = false;
+                    if (_audioDeviceModule->MicrophoneMuteIsAvailable(&isDeviceMuteAvailable) == 0) {
+                        if (isDeviceMuteAvailable) {
+                            _audioDeviceModule->SetMicrophoneMute(_isMuted);
+                        }
+                    }
+                }
             });
 
             _outgoingAudioChannel->Enable(!_isMuted);
+        } else {
+            _threads->getWorkerThread()->BlockingCall([this]() {
+                if (_audioDeviceModule) {
+                    bool isDeviceMuteAvailable = false;
+                    if (_audioDeviceModule->MicrophoneMuteIsAvailable(&isDeviceMuteAvailable) == 0) {
+                        if (isDeviceMuteAvailable) {
+                            _audioDeviceModule->SetMicrophoneMute(_isMuted);
+                        }
+                    }
+                }
+            });
+
         }
     }
 
@@ -3355,12 +3384,21 @@ public:
 private:
     webrtc::scoped_refptr<WrappedAudioDeviceModule> createAudioDeviceModule() {
         auto audioDeviceDataObserverShared = _audioDeviceDataObserverShared;
+        auto onMutedSpeechActivityDetected = _onMutedSpeechActivityDetected;
 #ifdef WEBRTC_IOS
         bool disableRecording = _disableAudioInput;
 #endif
         const auto create = [&](webrtc::AudioDeviceModule::AudioLayer layer) {
 #ifdef WEBRTC_IOS
-            return rtc::make_ref_counted<webrtc::tgcalls_ios_adm::AudioDeviceModuleIOS>(false, disableRecording, disableRecording ? 2 : 1);
+            auto result = rtc::make_ref_counted<webrtc::tgcalls_ios_adm::AudioDeviceModuleIOS>(false, disableRecording, disableRecording ? 2 : 1);
+            if (result) {
+                result->mutedSpeechDetectionChanged = ^(bool value) {
+                    if (onMutedSpeechActivityDetected) {
+                        onMutedSpeechActivityDetected(value);
+                    }
+                };
+            }
+            return result;
 #else
             return webrtc::AudioDeviceModule::Create(
                 layer,
@@ -3492,6 +3530,8 @@ private:
 
     webrtc::scoped_refptr<webrtc::PendingTaskSafetyFlag> _workerThreadSafery;
     webrtc::scoped_refptr<webrtc::PendingTaskSafetyFlag> _networkThreadSafery;
+    
+    std::function<void(bool)> _onMutedSpeechActivityDetected;
 };
 
 GroupInstanceCustomImpl::GroupInstanceCustomImpl(GroupInstanceDescriptor &&descriptor) {
