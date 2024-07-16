@@ -275,7 +275,6 @@ DesktopSourceRenderer::DesktopSourceRenderer(
 
 #ifdef WEBRTC_WIN
     options.set_allow_directx_capturer(true);
-    options.set_allow_use_magnification_api(false);
 #elif defined WEBRTC_MAC
     options.set_allow_iosurface(true);
 #elif defined WEBRTC_USE_PIPEWIRE
