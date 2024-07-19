@@ -281,11 +281,16 @@ DesktopSourceRenderer::DesktopSourceRenderer(
     options.set_allow_pipewire(true);
 #endif // WEBRTC_WIN || WEBRTC_MAC
 
+#ifdef WEBRTC_USE_PIPEWIRE
+	_capturer = webrtc::DesktopCapturer::CreateGenericCapturer(options);
+#else // WEBRTC_USE_PIPEWIRE
     if (source.isWindow()) {
         _capturer = webrtc::DesktopCapturer::CreateWindowCapturer(options);
     } else {
         _capturer = webrtc::DesktopCapturer::CreateScreenCapturer(options);
     }
+#endif // WEBRTC_USE_PIPEWIRE
+
     if (!_capturer) {
         _fatalError = true;
         return;

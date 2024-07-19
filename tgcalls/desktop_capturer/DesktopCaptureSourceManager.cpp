@@ -42,6 +42,9 @@ webrtc::DesktopCaptureOptions DesktopCaptureSourceManager::OptionsForType(
 auto DesktopCaptureSourceManager::CreateForType(DesktopCaptureType type)
 -> std::unique_ptr<webrtc::DesktopCapturer> {
     const auto options = OptionsForType(type);
+#ifdef WEBRTC_USE_PIPEWIRE
+	return webrtc::DesktopCapturer::CreateGenericCapturer(options);
+#endif // WEBRTC_USE_PIPEWIRE
     return (type == DesktopCaptureType::Screen)
         ? webrtc::DesktopCapturer::CreateScreenCapturer(options)
         : webrtc::DesktopCapturer::CreateWindowCapturer(options);
