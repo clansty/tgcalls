@@ -4,6 +4,7 @@
 #include "api/video/video_frame_buffer.h"
 #include "api/video/video_rotation.h"
 #include "modules/video_capture/video_capture_factory.h"
+#include "modules/video_capture/video_capture_options.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 
@@ -23,7 +24,9 @@ constexpr auto kPreferredFps = 30;
 	auto result = webrtc::VideoCaptureOptions();
 	result.set_allow_v4l2(true);
 #ifdef WEBRTC_USE_PIPEWIRE
-	result.set_allow_pipewire(true);
+	//result.set_allow_pipewire(true);
+	// This requires a call to result.Init(callback)
+	// and waiting for the callback to finish.
 #endif
 	return result;
 }
