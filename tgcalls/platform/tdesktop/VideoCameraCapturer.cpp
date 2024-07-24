@@ -4,9 +4,12 @@
 #include "api/video/video_frame_buffer.h"
 #include "api/video/video_rotation.h"
 #include "modules/video_capture/video_capture_factory.h"
-#include "modules/video_capture/video_capture_options.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
+
+#ifdef WEBRTC_LINUX // Breaks compilation on MSVC because of ERROR define.
+#include <modules/video_capture/video_capture_options.h>
+#endif // WEBRTC_LINUX
 
 #include <stdint.h>
 #include <memory>
