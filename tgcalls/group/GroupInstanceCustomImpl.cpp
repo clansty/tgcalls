@@ -3604,9 +3604,6 @@ private:
     bool _HDVideo = false;
     
     std::function<void(bool)> _onMutedSpeechActivityDetected;
-    bool _stereoMode = false;
-    uint16_t _customBitrate = 32;
-    bool _HDVideo = false;
 };
 
 GroupInstanceCustomImpl::GroupInstanceCustomImpl(GroupInstanceDescriptor &&descriptor) {
