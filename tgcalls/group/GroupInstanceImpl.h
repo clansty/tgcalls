@@ -164,10 +164,10 @@ struct GroupInstanceDescriptor {
     std::vector<VideoCodecName> videoCodecPreferences;
     std::function<std::shared_ptr<RequestMediaChannelDescriptionTask>(std::vector<uint32_t> const &, std::function<void(std::vector<MediaChannelDescription> &&)>)> requestMediaChannelDescriptions;
     int minOutgoingVideoBitrateKbit{100};
+    std::function<void(bool)> onMutedSpeechActivityDetected;
     bool enableStereoMode = false;
     uint16_t customBitrate = 32;
     bool enableHDVideo = false;
-    std::function<void(bool)> onMutedSpeechActivityDetected;
 };
 
 template <typename T>

@@ -1781,6 +1781,7 @@ public:
         outgoingVideoDescription->set_rtcp_reduced_size(true);
         outgoingVideoDescription->set_direction(webrtc::RtpTransceiverDirection::kSendOnly);
         std::vector<cricket::Codec> outgoingVideoCodecs;
+        outgoingVideoDescription->set_bandwidth(_HDVideo ? 20000000 : 1300000);
         outgoingVideoCodecs.push_back(_selectedPayloadType->videoCodec);
         if (_selectedPayloadType->rtxCodec) {
             outgoingVideoCodecs.push_back(_selectedPayloadType->rtxCodec.value());
@@ -3603,6 +3604,9 @@ private:
     bool _HDVideo = false;
     
     std::function<void(bool)> _onMutedSpeechActivityDetected;
+    bool _stereoMode = false;
+    uint16_t _customBitrate = 32;
+    bool _HDVideo = false;
 };
 
 GroupInstanceCustomImpl::GroupInstanceCustomImpl(GroupInstanceDescriptor &&descriptor) {
